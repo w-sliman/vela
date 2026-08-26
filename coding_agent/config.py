@@ -19,6 +19,7 @@ class Config:
     resume_max_chars:int=6000
     memory_max_records:int=200; memory_ttl_days:int=0
     show_todos:bool=True
+    verify_gate:bool=False
     @classmethod
     def from_env(cls, workspace_arg=None):
         load_dotenv()
@@ -41,4 +42,4 @@ class Config:
           os.getenv('CODER_MEMORY_DISTILL','1')!='0',
           int(os.getenv('CODER_RESUME_MAX_CHARS','6000')),
           int(os.getenv('CODER_MEMORY_MAX_RECORDS','200')),int(os.getenv('CODER_MEMORY_TTL_DAYS','0')),
-          os.getenv('CODER_TODOS','1')!='0')
+          os.getenv('CODER_TODOS','1')!='0',os.getenv('CODER_VERIFY_GATE','0')!='0')

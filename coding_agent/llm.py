@@ -20,6 +20,11 @@ COMPACT_SYSTEM=('You compress coding-agent conversation transcripts. Respond wit
  'later retrieval). Keep each text under ~200 chars; use an empty list when nothing qualifies.')
 DEFAULT_KEEP_TURNS=2
 KEEP_MAX=5
+_EDIT_TOOLS=frozenset({'write_file','replace_text','apply_patch'})
+_VERIFY_HINTS=('pytest',' test','tests','mypy','ruff','flake8','unittest','tox','compileall')
+VERIFY_GATE_MSG=('[verify gate] Before finishing: you have open todos and/or edits not followed by a '
+ 'passing check. Run the relevant tests/checks now, or update your todo list to reflect reality. '
+ 'Do not claim success while work is pending.')
 CONSOLIDATE_SYSTEM=("You curate a coding agent's persistent project memory. Respond with ONLY JSON: "
  '{"groups":[{"ids":["r1","r5"],"kind":"decision","text":"canonical merged text","tags":["..."],"paths":["..."]}]}. '
  'Group records that state the same underlying fact (duplicates or paraphrases; 2+ ids per group) and '
@@ -132,7 +137,7 @@ class CodingAgent:
         if not config.api_key: raise RuntimeError('OPENAI_API_KEY is not configured. Add it to .env.')
         if not config.model: raise RuntimeError('OPENAI_MODEL is not configured. Add it to .env.')
         self.provider=OpenAICompatibleProvider(config.api_key,config.base_url)
-        self.config=config;self.context=context;self.session=session;self.events=events or EventBus();self.history=[];self.mode=config.api_mode;self.metrics=Metrics();self.ctx=ContextManager(config.max_context_chars,config.max_history_items);self._auto_compact_attempted=False;self.memory=MemoryInjector(config,session);self._turn_memory=None
+        self.config=config;self.context=context;self.session=session;self.events=events or EventBus();self.history=[];self.mode=config.api_mode;self.metrics=Metrics();self.ctx=ContextManager(config.max_context_chars,config.max_history_items);self._auto_compact_attempted=False;self.memory=MemoryInjector(config,session);self._turn_memory=None;self._gate_nudged=False;self._edited_since_check=False
     def clear(self): self.history=[];self._turn_memory=None
     def start_resumed(self,digest_text,source_id):
         """Replace context with a resumed-session digest as the opening context message."""
@@ -241,6 +246,9 @@ class CodingAgent:
         return list(getattr(ctx,'todos',None) or []) if ctx else []
     def _dispatch(self,name,args):
         result=dispatch(self.context,name,args)
+        if name in _EDIT_TOOLS and '"status": "completed"' in result:self._edited_since_check=True
+        elif name=='run_tests' or (name=='run_command' and any(h in str(args.get('command','')) for h in _VERIFY_HINTS)):
+            if '"returncode": 0' in result:self._edited_since_check=False
         if name=='write_todos':
             try:
                 payload=json.loads(result)
@@ -284,6 +292,7 @@ class CodingAgent:
         self.events.emit('start','model request')
         self.session.record('user',{'text':user_text});self.history.append({'role':'user','content':user_text})
         self._turn_memory=self.memory.build(user_text,self.history[:-1])
+        self._gate_nudged=False;self._edited_since_check=False
         calls=0
         self._auto_compact_attempted=False;self.streamed_any=False
         for _ in range(self.config.max_turns):
@@ -302,6 +311,13 @@ class CodingAgent:
                     continue
                 raise
             if result is not None:
+                open_items=[t for t in self.todos if str(t.get('status'))!='done']
+                if getattr(self.config,'verify_gate',False) and not self._gate_nudged and (open_items or self._edited_since_check):
+                    self._gate_nudged=True
+                    self.events.emit('info','verify gate: nudging before finish (open todos / unverified edits)')
+                    self.session.record('verify_gate',{'open_todos':len(open_items),'edited_since_check':self._edited_since_check})
+                    self.history.append({'role':'user','content':VERIFY_GATE_MSG})
+                    continue
                 self.metrics.price(self.config.price_input_per_million,self.config.price_output_per_million)
                 self.events.emit('done','model response')
                 return AgentResult(result,self.metrics.tool_calls,self.metrics.as_dict(),streamed=getattr(self,'streamed_any',False))

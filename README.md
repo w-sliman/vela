@@ -91,6 +91,7 @@ review this repository for correctness issues; do not modify files
 - Relevant project memories are retrieved lexically once per user request and attached as advisory context; the ids used are shown after each turn (`memory: r2, r7`). Disable with `CODER_MEMORY_INJECT=0`; tune via `CODER_MEMORY_TOPK`, `CODER_MEMORY_MAX_CHARS`, `CODER_MEMORY_MIN_SCORE`. `/compact` also distills durable decisions into memory (`CODER_MEMORY_DISTILL=0` disables). See `docs/MEMORY.md`.
 - Memory stays curated automatically: writes enforce a record cap (`CODER_MEMORY_MAX_RECORDS`, coldest dropped first) and an optional age limit (`CODER_MEMORY_TTL_DAYS`, off by default); `/memory consolidate [focus]` asks the model to group paraphrased duplicates and merges them deterministically.
 - For non-trivial tasks the agent maintains a visible working todo list (`write_todos` tool): announced before work starts, updated live as steps finish, re-injected into every model request so it survives context trimming/compaction, and journaled with per-change diffs. Inspect anytime with `/todos`; disable via `CODER_TODOS=0`.
+- Optional experimental guardrail (`CODER_VERIFY_GATE=1`): if the model tries to finish while todos are open or edits were never followed by a passing check, it gets one corrective nudge first.
 - Past sessions can be continued: `/resume` rebuilds task state from any recorded trace as a compact digest (never as raw replay), keeping history/pair integrity intact.
 
 ## Architecture
