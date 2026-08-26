@@ -1,0 +1,124 @@
+from __future__ import annotations
+import argparse
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.prompt import Confirm,Prompt
+from rich.table import Table
+from .config import Config
+from .llm import CodingAgent
+from .session import Session
+from .shell import Shell
+from .workspace import Workspace
+from .tools import ToolContext
+from .git import Git
+from .browser import Browser
+from .github import GitHub
+from .sandbox import DockerSandbox
+from .agents import Delegator
+from .telemetry import USAGE_ADVICE
+from .events import EventBus
+from .ui import DebugUI,_fmt_tokens
+from .resume import list_sessions,resolve_session,build_digest
+from . import __version__
+console=Console()
+debug_ui=DebugUI(console)
+def approval_callback(command,reason):
+    console.print(Panel(f'[bold yellow]Approval required[/bold yellow]\n\nReason: {reason}\n\n[dim]{command}[/dim]',border_style='yellow'));return Confirm.ask('Execute?',default=False)
+def make_approval_callback(mode):
+    """Return the approval callback that actually implements the configured mode."""
+    if mode=='auto':
+        console.print('[yellow]Approval mode: auto — risky commands run without prompting.[/]')
+        return lambda command,reason: True
+    if mode=='deny':
+        console.print('[yellow]Approval mode: deny — risky commands are rejected.[/]')
+        return lambda command,reason: False
+    return approval_callback
+def show_banner(c):
+    console.print(Panel.fit(f'[bold cyan]Workspace Coding Agent v{__version__}[/bold cyan]\n[dim]Inspect • Edit • Run • Test • Review[/dim]\n\nWorkspace: [bold]{c.workspace}[/bold]\nModel: [bold]{c.model or "not configured"}[/bold]\nEndpoint: [bold]{c.base_url or "OpenAI default"}[/bold]\nAPI: [bold]{c.api_mode}[/bold]\nApproval: [bold]{c.approval_mode}[/bold]',border_style='cyan'))
+def main():
+    p=argparse.ArgumentParser(description='Interactive venv-native coding agent');p.add_argument('--workspace');p.add_argument('--plan',action='store_true');a=p.parse_args()
+    c=Config.from_env(a.workspace);ws=Workspace(c.workspace,c.max_file_chars);shell=Shell(c);session=Session(c.workspace)
+    debug_ui.enabled=c.debug
+    ctx=ToolContext(c,ws,shell,make_approval_callback(c.approval_mode),Git(c.workspace),Browser(c.enable_browser),GitHub(c.enable_github),DockerSandbox(c.workspace,c.enable_sandbox),lambda line: console.print(f'[dim]{line.rstrip()}[/dim]'),Delegator(c, f'Workspace: {c.workspace}'),EventBus(debug_ui.event),on_tool_result=debug_ui.tool_result);show_banner(c)
+    if not c.api_key or not c.model: console.print(Panel('Configure OPENAI_API_KEY and OPENAI_MODEL in .env.',title='LLM configuration required',border_style='red'));raise SystemExit(2)
+    agent=CodingAgent(c,ctx,session,EventBus(debug_ui.event))
+    if a.plan: console.print(Markdown(agent.run('Create an implementation plan for this repository. Do not edit files.').text));return
+    while True:
+        try:text=Prompt.ask('[bold green]you[/bold green]').strip()
+        except (EOFError,KeyboardInterrupt):console.print();break
+        if not text:continue
+        try:
+            if text in {'/quit','/exit'}:break
+            if text=='/help':
+                t=Table(title='Commands');t.add_column('Command');t.add_column('Meaning')
+                for x in [('/help','commands'),('/pwd','workspace'),('/tree','tree'),('/model','model/endpoint'),('/usage','session token usage'),('/compact [focus]','summarize older conversation turns'),('/undo','revert last agent edit'),('/memory','persistent memory'),('/sessions [n]','list recent session traces'),('/resume [id|#]','continue a past session as fresh digest context'),('/history','session events'),('/clear','clear LLM context'),('/quit','exit')]:t.add_row(*x)
+                console.print(t);continue
+            if text=='/pwd':console.print(c.workspace);continue
+            if text=='/tree':console.print('\n'.join(ws.list_files()));continue
+            if text=='/model':console.print(f'{c.model} @ {c.base_url or "OpenAI default"} ({c.api_mode})');continue
+            if text=='/usage':
+                m=agent.metrics;m.price(c.price_input_per_million,c.price_output_per_million)
+                avg=(m.latency_ms/m.calls) if m.calls else 0.0
+                console.print(f'[dim]LLM calls: {m.calls} | tokens in/out/total: {m.input_tokens}/{m.output_tokens}/{m.input_tokens+m.output_tokens} | est. cost: ${m.estimated_cost_usd:.4f} | avg latency: {avg:.0f} ms[/dim]')
+                console.print(f'[dim]context: last prompt {_fmt_tokens(m.last_input_tokens)} of {_fmt_tokens(win)} window ({(m.last_input_tokens/win*100 if win else 0):.0f}%) | window set via CODER_CONTEXT_WINDOW[/dim]' if m.last_input_tokens else f'[dim]context: no usage reported yet (window {win:,}, set via CODER_CONTEXT_WINDOW)[/dim]')
+                if m.missing_usage:console.print(f'[yellow]{m.missing_usage} call(s) reported no usage data (excluded from totals). {USAGE_ADVICE}[/]')
+                continue
+            if text=='/undo':
+                if not ctx.git.ensure_repo():
+                    console.print('[yellow]no git repository in workspace[/]')
+                elif not approval_callback('git reset --hard HEAD~1','undo restores the workspace to the state before the last agent edit'):
+                    console.print('[dim]cancelled.[/dim]')
+                else:
+                    r=ctx.git.undo_last()
+                    console.print('[green]undone: workspace restored to previous checkpoint.[/green]' if r.returncode==0 else f'[red]undo failed: {r.stderr.strip()}[/red]')
+                continue
+            if text=='/memory':
+                from .memory import ProjectMemory;console.print(ProjectMemory(c.workspace).text());continue
+            if text=='/history':
+                for e in session.recent():console.print(e)
+                continue
+            if text=='/clear':agent.clear();console.print('[dim]LLM context cleared.[/dim]');continue
+            if text=='/sessions' or text.startswith('/sessions '):
+                import datetime as _dt
+                arg=text[len('/sessions'):].strip()
+                n=int(arg) if arg.isdigit() else 10
+                rows=list_sessions(c.workspace,exclude=session.path,limit=max(1,min(n,100)))
+                if not rows:console.print('[yellow]no recorded sessions yet[/yellow]')
+                else:
+                    t=Table(title='Recent sessions (newest first)')
+                    t.add_column('#');t.add_column('id');t.add_column('UTC start');t.add_column('turns');t.add_column('first request')
+                    for i,s in enumerate(rows,1):
+                        when=_dt.datetime.fromtimestamp(s['mtime'],_dt.timezone.utc).strftime('%Y-%m-%d %H:%M')
+                        t.add_row(str(i),s['id'],when,str(s['turns']),s['first_user'][:60] or '—')
+                    console.print(t);console.print('[dim]/resume continues the newest; /resume <#|id-prefix> picks another.[/dim]')
+                continue
+            if text=='/resume' or text.startswith('/resume '):
+                found,err=resolve_session(c.workspace,text[len('/resume'):].strip() or None,exclude=session.path)
+                if err:console.print(f'[yellow]{err}[/yellow]');continue
+                d=build_digest(found['path'],max_chars=c.resume_max_chars)
+                agent.start_resumed(d['text'],found['id'])
+                sid=found['id'];nfiles=len(d['files'])
+                console.print(f'[green]resumed [bold]{sid}[/bold][/green] — {d["requests"]} request(s), {nfiles} file(s) touched; context rebuilt as digest.')
+                console.print('[dim]prior files may have changed since — verify before editing.[/dim]')
+                continue
+            if text=='/compact' or text.startswith('/compact '):
+                focus=text[len('/compact'):].strip() or None
+                console.print('[dim]compacting…[/dim]')
+                res=agent.compact(focus)
+                if not res.get('compacted',True):console.print(f"[yellow]{res['reason']}[/]")
+                else:
+                    console.print(f"[dim]compacted: {res['turns_removed']} turn(s) summarized, kept last {res['turns_kept']} | history {res['items_before']}→{res['items_after']} items[/dim]")
+                    console.print(Markdown(res['summary']))
+                continue
+            console.print('[bold magenta]agent[/bold magenta] thinking…')
+            r=agent.run(text)
+            if not r.streamed:console.print(Markdown(r.text))
+            m=agent.metrics;win=c.context_window_tokens;ctxpct=(m.last_input_tokens/win*100) if win and m.last_input_tokens else 0.0
+            console.print(f'[dim]tool calls: {r.tool_calls} | latency: {r.metrics["latency_ms"]:.0f} ms | session: {session.path.name}[/dim]')
+            console.print(f'[dim]tokens: {m.input_tokens} in / {m.output_tokens} out / {m.input_tokens+m.output_tokens} total | context: {_fmt_tokens(m.last_input_tokens)}/{_fmt_tokens(win)} ({ctxpct:.0f}%) of {win:,} window[/dim]' if m.last_input_tokens else f'[dim]tool calls: {r.tool_calls} (no usage data reported by endpoint)[/dim]')
+        except KeyboardInterrupt:
+            console.print('\n[dim]interrupted[/dim]');continue
+        except Exception as e:
+            console.print(Panel(f'{type(e).__name__}: {e}',title='Error',border_style='red'))
+if __name__=='__main__':main()

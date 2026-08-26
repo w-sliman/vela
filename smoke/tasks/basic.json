@@ -1,0 +1,1 @@
+{"name":"basic_python_project","checks":["pytest -q"]}

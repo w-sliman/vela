@@ -1,0 +1,25 @@
+[project]
+name = "workspace-coding-agent"
+version = "1.2.0"
+description = "A venv-native, OpenAI-compatible coding agent with guarded tools, memory, telemetry, browser/GitHub integrations and optional sandboxing."
+requires-python = ">=3.11"
+dependencies = [
+  "openai>=1.100.0",
+  "rich>=14.0.0",
+  "python-dotenv>=1.1.0",
+  "httpx>=0.27.0",
+]
+
+[project.optional-dependencies]
+browser = ["playwright>=1.50.0"]
+
+github = []
+
+dev = ["pytest>=8.0", "ruff>=0.8", "mypy>=1.13"]
+
+[project.scripts]
+coder = "coding_agent.cli:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
