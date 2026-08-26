@@ -6,7 +6,7 @@ from rich.panel import Panel
 from rich.prompt import Confirm,Prompt
 from rich.table import Table
 from .config import Config
-from .llm import CodingAgent
+from .llm import CodingAgent,PauseInterrupt
 from .session import Session
 from .shell import Shell
 from .workspace import Workspace
@@ -52,7 +52,7 @@ def main():
             if text in {'/quit','/exit'}:break
             if text=='/help':
                 t=Table(title='Commands');t.add_column('Command');t.add_column('Meaning')
-                for x in [('/help','commands'),('/pwd','workspace'),('/tree','tree'),('/model','model/endpoint'),('/usage','session token usage'),('/compact [focus]','summarize older conversation turns'),('/undo','revert last agent edit'),('/memory [consolidate]','persistent memory; consolidate merges duplicates'),('/todos','current working todo list'),('/sessions [n]','list recent session traces'),('/resume [id|#]','continue a past session as fresh digest context'),('/history','session events'),('/clear','clear LLM context'),('/quit','exit')]:t.add_row(*x)
+                for x in [('/help','commands'),('/pwd','workspace'),('/tree','tree'),('/model','model/endpoint'),('/usage','session token usage'),('/compact [focus]','summarize older conversation turns'),('/undo','revert last agent edit'),('/memory [consolidate]','persistent memory; consolidate merges duplicates'),('/todos','current working todo list'),('/sessions [n]','list recent session traces'),('/resume [id|#]','continue a past session as fresh digest context'),('/continue','resume a paused run (Ctrl+C)'),('/history','session events'),('/clear','clear LLM context'),('/quit','exit')]:t.add_row(*x)
                 console.print(t);continue
             if text=='/pwd':console.print(c.workspace);continue
             if text=='/tree':console.print('\n'.join(ws.list_files()));continue
@@ -128,6 +128,12 @@ def main():
                     console.print(f"[dim]compacted: {res['turns_removed']} turn(s) summarized, kept last {res['turns_kept']} | history {res['items_before']}→{res['items_after']} items[/dim]")
                     console.print(Markdown(res['summary']))
                 continue
+            if text=='/continue':
+                if not agent.history:console.print('[yellow]nothing to continue — context is empty[/yellow]');continue
+                console.print('[bold magenta]agent[/bold magenta] continuing…')
+                r=agent.resume()
+                if not r.streamed:console.print(Markdown(r.text))
+                continue
             console.print('[bold magenta]agent[/bold magenta] thinking…')
             r=agent.run(text)
             if not r.streamed:console.print(Markdown(r.text))
@@ -140,6 +146,8 @@ def main():
                 done=sum(1 for t in td if str(t.get('status'))=='done')
                 console.print(f'[dim]todos: {done}/{len(td)} done[/dim]')
             console.print(f'[dim]tokens: {m.input_tokens} in / {m.output_tokens} out / {m.input_tokens+m.output_tokens} total | context: {_fmt_tokens(m.last_input_tokens)}/{_fmt_tokens(win)} ({ctxpct:.0f}%) of {win:,} window[/dim]' if m.last_input_tokens else f'[dim]tool calls: {r.tool_calls} (no usage data reported by endpoint)[/dim]')
+        except PauseInterrupt:
+            console.print('[yellow]paused — plan, todos and history kept; type /continue to resume[/yellow]');continue
         except KeyboardInterrupt:
             console.print('\n[dim]interrupted[/dim]');continue
         except Exception as e:

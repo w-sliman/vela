@@ -28,7 +28,7 @@ class Scripted:
     def chat(self, **kw):
         self.calls.append(kw)
         item = self.queued.pop(0)
-        if isinstance(item, Exception):
+        if isinstance(item, BaseException):            # covers KeyboardInterrupt too
             raise item
         if getattr(item, 'tool_calls', None):           # scripted tool-call message
             return NS(choices=[NS(message=item)], usage=NS(prompt_tokens=5, completion_tokens=1, total_tokens=6))

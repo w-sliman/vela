@@ -20,6 +20,9 @@ COMPACT_SYSTEM=('You compress coding-agent conversation transcripts. Respond wit
  'later retrieval). Keep each text under ~200 chars; use an empty list when nothing qualifies.')
 DEFAULT_KEEP_TURNS=2
 KEEP_MAX=5
+
+class PauseInterrupt(Exception):
+    """Raised when the user interrupted a run; context stays intact for /continue."""
 _EDIT_TOOLS=frozenset({'write_file','replace_text','apply_patch'})
 _VERIFY_HINTS=('pytest',' test','tests','mypy','ruff','flake8','unittest','tox','compileall')
 VERIFY_GATE_MSG=('[verify gate] Before finishing: you have open todos and/or edits not followed by a '
@@ -138,6 +141,32 @@ class CodingAgent:
         if not config.model: raise RuntimeError('OPENAI_MODEL is not configured. Add it to .env.')
         self.provider=OpenAICompatibleProvider(config.api_key,config.base_url)
         self.config=config;self.context=context;self.session=session;self.events=events or EventBus();self.history=[];self.mode=config.api_mode;self.metrics=Metrics();self.ctx=ContextManager(config.max_context_chars,config.max_history_items);self._auto_compact_attempted=False;self.memory=MemoryInjector(config,session);self._turn_memory=None;self._gate_nudged=False;self._edited_since_check=False
+    def _repair_partial_turn(self):
+        """Close dangling tool-call pairs after an interrupt, so the next request
+        stays valid. Only the trailing block is examined. Returns outputs added."""
+        h=self.history;idx=None
+        for i in range(len(h)-1,-1,-1):
+            it=h[i]
+            if isinstance(it,dict) and it.get('role')=='assistant' and it.get('tool_calls'):idx=i;break
+            if not isinstance(it,dict) and getattr(it,'type',None)=='function_call':idx=i;break
+        if idx is None:return 0
+        block=h[idx:]
+        if isinstance(block[0],dict):
+            ids=[str(c.get('id')) for c in block[0].get('tool_calls') or []]
+            answered={str(o.get('tool_call_id')) for o in block[1:] if isinstance(o,dict)}
+            add=lambda tid:self.history.append({'role':'tool','tool_call_id':tid,'content':'[interrupted by user]'})
+        else:
+            ids=[str(getattr(block[0],'call_id',getattr(block[0],'id','')))]
+            answered={str(o.get('call_id')) for o in block[1:] if isinstance(o,dict)}
+            add=lambda tid:self.history.append({'type':'function_call_output','call_id':tid,'output':'[interrupted by user]'})
+        added=0
+        for tid in ids:
+            if tid and tid not in answered:add(tid);added+=1
+        return added
+    def resume(self,instruction=None):
+        """Continue a paused run: re-enter the loop with a synthetic nudge."""
+        if not self.history:raise RuntimeError('nothing to continue — context is empty')
+        return self.run(instruction or '[paused] Continue where you left off; finish your remaining todos.')
     def clear(self): self.history=[];self._turn_memory=None
     def start_resumed(self,digest_text,source_id):
         """Replace context with a resumed-session digest as the opening context message."""
@@ -295,34 +324,42 @@ class CodingAgent:
         self._gate_nudged=False;self._edited_since_check=False
         calls=0
         self._auto_compact_attempted=False;self.streamed_any=False
-        for _ in range(self.config.max_turns):
-            self._maybe_auto_compact()
-            try: result=self._responses() if self.mode in {'auto','responses'} else self._chat()
-            except Exception as exc:
-                self.events.emit('error','model request failed',error=str(exc))
-                self.session.record('error',{'stage':'model_request','mode':self.mode,'message':str(exc)})
-                # Local OpenAI-compatible servers sometimes reject malformed
-                # function-call JSON before returning an API response. Retry once
-                # with a corrective instruction and a compact history rather than
-                # immediately crashing or blindly replaying the same request.
-                if self.mode=='auto':
-                    self.mode='chat'
-                    self.history=[{'role':'user','content':user_text},{'role':'user','content':'The previous model request failed at the tool-call transport layer. Do not emit large inline file contents. Re-read the target file and use small apply_patch/replace_text operations with valid JSON.'}]
-                    continue
-                raise
-            if result is not None:
-                open_items=[t for t in self.todos if str(t.get('status'))!='done']
-                if getattr(self.config,'verify_gate',False) and not self._gate_nudged and (open_items or self._edited_since_check):
-                    self._gate_nudged=True
-                    self.events.emit('info','verify gate: nudging before finish (open todos / unverified edits)')
-                    self.session.record('verify_gate',{'open_todos':len(open_items),'edited_since_check':self._edited_since_check})
-                    self.history.append({'role':'user','content':VERIFY_GATE_MSG})
-                    continue
-                self.metrics.price(self.config.price_input_per_million,self.config.price_output_per_million)
-                self.events.emit('done','model response')
-                return AgentResult(result,self.metrics.tool_calls,self.metrics.as_dict(),streamed=getattr(self,'streamed_any',False))
-            calls=self.metrics.tool_calls;self._trim()
-        raise RuntimeError(f'agent exceeded {self.config.max_turns} controller turns')
+        try:
+            for _ in range(self.config.max_turns):
+                self._maybe_auto_compact()
+                try: result=self._responses() if self.mode in {'auto','responses'} else self._chat()
+                except Exception as exc:
+                    self.events.emit('error','model request failed',error=str(exc))
+                    self.session.record('error',{'stage':'model_request','mode':self.mode,'message':str(exc)})
+                    # Local OpenAI-compatible servers sometimes reject malformed
+                    # function-call JSON before returning an API response. Retry once
+                    # with a corrective instruction and a compact history rather than
+                    # immediately crashing or blindly replaying the same request.
+                    if self.mode=='auto':
+                        self.mode='chat'
+                        self.history=[{'role':'user','content':user_text},{'role':'user','content':'The previous model request failed at the tool-call transport layer. Do not emit large inline file contents. Re-read the target file and use small apply_patch/replace_text operations with valid JSON.'}]
+                        continue
+                    raise
+                if result is not None:
+                    open_items=[t for t in self.todos if str(t.get('status'))!='done']
+                    if getattr(self.config,'verify_gate',False) and not self._gate_nudged and (open_items or self._edited_since_check):
+                        self._gate_nudged=True
+                        self.events.emit('info','verify gate: nudging before finish (open todos / unverified edits)')
+                        self.session.record('verify_gate',{'open_todos':len(open_items),'edited_since_check':self._edited_since_check})
+                        self.history.append({'role':'user','content':VERIFY_GATE_MSG})
+                        continue
+                    self.metrics.price(self.config.price_input_per_million,self.config.price_output_per_million)
+                    self.events.emit('done','model response')
+                    return AgentResult(result,self.metrics.tool_calls,self.metrics.as_dict(),streamed=getattr(self,'streamed_any',False))
+                calls=self.metrics.tool_calls;self._trim()
+            raise RuntimeError(f'agent exceeded {self.config.max_turns} controller turns')
+        except KeyboardInterrupt:
+            # Cooperative pause: close any dangling tool-call pair so history stays
+            # valid, journal it, and surface a typed exception the REPL catches.
+            added=self._repair_partial_turn()
+            self.session.record('paused',{'repaired_outputs':added})
+            self.events.emit('info','paused by user — context kept; /continue resumes')
+            raise PauseInterrupt from None
     def _responses(self):
         with Timer() as timer:r=self._with_retries(lambda:self.provider.responses(model=self.config.model,instructions=SYSTEM_PROMPT,input=self._with_context_blocks(self.history),tools=tool_schemas()))
         u=extract_usage(getattr(r,'usage',None));self.metrics.add(getattr(r,'usage',None),timer.elapsed_ms)

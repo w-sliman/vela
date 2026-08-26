@@ -63,6 +63,21 @@ auto-compaction cannot make the model forget its own plan. Objections work like
 interrupting a colleague: just type your correction — the model revises the list
 first, then continues. Open todos carry over into `/resume` digests.
 
+## Pausing and resuming
+
+Pressing Ctrl+C while the agent works no longer discards anything. The interrupt
+is caught at a safe boundary, any half-finished tool call is closed with an
+`[interrupted by user]` result (so history stays valid), and you land back at
+the prompt with todos, memory and conversation intact:
+
+```
+^C paused — plan, todos and history kept; type /continue to resume
+```
+
+`/continue` re-enters the loop with a synthetic "[paused] Continue where you
+left off" nudge — the model sees its own todo list and keeps going. You can
+also type a new instruction instead, which simply continues the same context.
+
 ## CONTRIBUTING.md
 
 Put project-specific engineering conventions in `CONTRIBUTING.md`, e.g.:

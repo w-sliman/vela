@@ -25,6 +25,9 @@
 ### Verification gate (experimental)
 - `CODER_VERIFY_GATE=1` (off by default): edits set a dirty flag; only recognized checks (`run_tests`, or `run_command` invoking pytest/mypy/ruff/unittest/etc.) clear it when they pass. If the model finishes a request with open todos or unverified edits, deterministic code appends one corrective nudge and lets the loop continue — at most once per request, journaled as `verify_gate`.
 
+### Cooperative pause + /continue
+- Ctrl+C during a run no longer discards the turn: KeyboardInterrupt is converted at a safe boundary, `_repair_partial_turn()` closes any dangling tool-call pair with `[interrupted by user]` outputs (chat and responses transports both handled), the pause is journaled as `paused`, and the REPL prints how to resume. `/continue` re-enters the loop with a synthetic nudge; typing anything else continues the same context instead.
+
 ### Cross-session resume
 - `/sessions [n]`: newest-first index of recorded session traces (id, UTC start, turns, first request), excluding the active session.
 - `/resume [ref]`: continue any past session as fresh context. The trace is rebuilt mechanically into a bounded digest (requests, deduplicated touched files, compaction/error counts, last assistant answer) — never raw replay, so history/pair integrity and stale-hash safety hold by construction. Lineage journaled as `resumed_from`.

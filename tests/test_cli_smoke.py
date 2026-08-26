@@ -8,13 +8,15 @@ def test_cli_slash_commands_smoke(monkeypatch, capsys, tmp_path):
     """Drive the REPL non-interactively: banner, /help, /pwd, /tree, /usage, /quit."""
     monkeypatch.setenv('OPENAI_API_KEY', 'dummy-key')
     monkeypatch.setenv('OPENAI_MODEL', 'dummy-model')
-    monkeypatch.setattr(sys, 'stdin', io.StringIO('/help\n/pwd\n/tree\n/usage\n/quit\n'))
+    monkeypatch.setattr(sys, 'stdin', io.StringIO('/help\n/pwd\n/tree\n/usage\n/continue\n/quit\n'))
     monkeypatch.setattr(sys, 'argv', ['coding_agent', '--workspace', str(tmp_path)])
     main()
     out = capsys.readouterr().out
     assert 'Workspace Coding Agent' in out          # banner
     assert str(tmp_path) in out                     # /pwd
     assert '/sessions' in out and '/resume' in out  # /help table lists new commands
+    assert '/continue' in out                       # pause/continue documented in help
+    assert 'nothing to continue' in out             # empty-context guard
     assert 'tokens in/out/total' in out             # /usage line
 
 
