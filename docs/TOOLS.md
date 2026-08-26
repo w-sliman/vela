@@ -37,6 +37,18 @@ disables); `/undo` reverts the most recent one.
 
 ## Memory, delegation, integrations
 
-- **remember** / **recall_memory** — persistent project memory (`.coder-agent/memory.json`).
+- **remember** / **recall_memory** — persistent project memory (`.coder-agent/memory.json`). `remember` accepts optional `tags`/`paths` arrays that sharpen later lexical retrieval; duplicates refresh instead of piling up.
+- **forget_memory** — delete memory records by id prefix (ids visible via `recall_memory` or `/memory`).
+- **write_todos** — replace the agent's working todo list (see below). Deterministic validation: ≤12 items, one imperative line each (≤120 chars), statuses `pending/in_progress/done` (unknown → pending), exact duplicates dropped. Python diffs old-vs-new and journals the change.
 - **delegate_role** — isolated planner/reviewer sub-agent; advisory only, cannot edit files.
 - **browser_fetch** / **browser_open** / **github_get** — disabled until explicitly enabled via environment.
+
+## Todo list semantics
+
+The todo queue is the model's *visible intent* for non-trivial tasks:
+
+- **Full-list replacement**: every `write_todos` call rewrites the entire list, so stale ids are impossible. Order in the array is execution order.
+- **Always in context**: the current list is re-injected into every model request (after memory recall), so pair-aware trimming and auto-compact cannot erase it. This — not hard gating — is what keeps the model honest about its own plan.
+- **Observable**: updates render live in the REPL, `/todos` inspects on demand, each turn ends with `todos: N/M done`, and `todos_updated` trace events record every diff (completed/reopened/added/removed).
+- **Behavioral contract** lives in the system prompt: announce steps before multi-step work, exactly one `in_progress`, mark done immediately with evidence, revise-first when instructions change, skip for trivial asks.
+- `CODER_TODOS=0` disables injection/rendering.

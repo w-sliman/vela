@@ -49,7 +49,8 @@ The central design principle is: **the LLM proposes; deterministic Python execut
 - `telemetry.py`: exact usage extraction from both API naming conventions, metrics, timers.
 - `session.py`: UTC-stamped JSONL session traces (user/tool_call/tool_result/usage/error/compact/assistant events).
 - `git.py`: repo bootstrap, per-edit snapshots, undo, status/diff/checkpoint.
-- `memory.py`, `events.py`, `ui.py`, `agents.py`, `json_repair.py`, `prompts.py`, `config.py`: persistent memory, event bus, rendering, sub-agent delegation, defensive tool-JSON parsing, system prompt, environment configuration.
+- `resume.py`: session-trace index, `/resume` ref resolution (index/prefix), and mechanical digest construction from traces.
+- `memory.py`, `events.py`, `ui.py`, `agents.py`, `json_repair.py`, `prompts.py`, `config.py`: persistent memory with lexical retrieval/scoring, event bus, rendering, sub-agent delegation, defensive tool-JSON parsing, system prompt, environment configuration.
 
 ## Tool loop
 
@@ -62,6 +63,23 @@ The central design principle is: **the LLM proposes; deterministic Python execut
 7. Final text is shown to the user.
 
 The model has no direct filesystem or subprocess primitive outside these tools.
+
+## Advisory context blocks
+
+Two blocks are appended to outgoing model payloads but **never persisted into
+history** — so pair-aware trimming and history integrity are untouched by
+construction, and either block failing only costs its own presence:
+
+- **Memory recall** (`memory_injected`): lexically selected project memories,
+  ranked against the request text and recently touched paths; injections bump
+  record usage so future ranking self-tunes.
+- **Todo queue** (`todos_updated`): the model's working list via the
+  `write_todos` tool — validated and diffed deterministically, rendered live in
+  the REPL, journaled to the trace, and carried into `/resume` digests.
+
+Because both survive trimming/compaction while ordinary turns do not, they act
+as durable anchors: remembered knowledge across sessions, stated intent across
+a long run.
 
 ## Context management
 
