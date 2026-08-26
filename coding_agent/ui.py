@@ -27,6 +27,9 @@ class DebugUI:
         if kind == "usage":
             self._usage(getattr(event, "data", {}) or {})
             return
+        if kind == "todos":
+            self._todos(getattr(event, "data", {}) or {})
+            return
         if kind == "token":
             self._token(getattr(event, "data", {}) or {})
             return
@@ -59,6 +62,21 @@ class DebugUI:
             f"{_fmt_tokens(int(data.get('output') or 0))} out / "
             f"{_fmt_tokens(int(data.get('total') or 0))} total{ctx}[/]"
         )
+
+    def _todos(self, data):
+        """Working todo list; always visible — it is the agent's visible intent."""
+        items = data.get("items") or []
+        if not items:
+            self.console.print("[dim]todo list cleared[/dim]")
+            return
+        icon = {"done": "[green]✓[/green]", "in_progress": "[cyan]›[/cyan]", "pending": "[dim]○[/dim]"}
+        self.console.print("[bold]todos[/bold]")
+        for t in items:
+            mark = icon.get(str(t.get("status")), "[dim]○[/dim]")
+            text = str(t.get("text", ""))
+            style = "[dim]" if t.get("status") == "done" else ""
+            close = "[/dim]" if style else ""
+            self.console.print(f"  {mark} {style}{text}{close}")
 
     def _debug(self, event, kind):
         styles = {"start": "cyan", "done": "green", "error": "red", "info": "yellow"}

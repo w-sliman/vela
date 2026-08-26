@@ -52,7 +52,7 @@ def main():
             if text in {'/quit','/exit'}:break
             if text=='/help':
                 t=Table(title='Commands');t.add_column('Command');t.add_column('Meaning')
-                for x in [('/help','commands'),('/pwd','workspace'),('/tree','tree'),('/model','model/endpoint'),('/usage','session token usage'),('/compact [focus]','summarize older conversation turns'),('/undo','revert last agent edit'),('/memory [consolidate]','persistent memory; consolidate merges duplicates'),('/sessions [n]','list recent session traces'),('/resume [id|#]','continue a past session as fresh digest context'),('/history','session events'),('/clear','clear LLM context'),('/quit','exit')]:t.add_row(*x)
+                for x in [('/help','commands'),('/pwd','workspace'),('/tree','tree'),('/model','model/endpoint'),('/usage','session token usage'),('/compact [focus]','summarize older conversation turns'),('/undo','revert last agent edit'),('/memory [consolidate]','persistent memory; consolidate merges duplicates'),('/todos','current working todo list'),('/sessions [n]','list recent session traces'),('/resume [id|#]','continue a past session as fresh digest context'),('/history','session events'),('/clear','clear LLM context'),('/quit','exit')]:t.add_row(*x)
                 console.print(t);continue
             if text=='/pwd':console.print(c.workspace);continue
             if text=='/tree':console.print('\n'.join(ws.list_files()));continue
@@ -86,6 +86,14 @@ def main():
                 continue
             if text=='/history':
                 for e in session.recent():console.print(e)
+                continue
+            if text=='/todos':
+                td=agent.todos
+                if not td:console.print('[dim]no todos yet — the agent creates them for non-trivial tasks[/dim]')
+                else:
+                    for t in td:
+                        mark={'done':'[green]✓[/green]','in_progress':'[cyan]›[/cyan]'}.get(str(t.get('status')),'[dim]○[/dim]')
+                        console.print(f'  {mark} {t.get("text")}')
                 continue
             if text=='/clear':agent.clear();console.print('[dim]LLM context cleared.[/dim]');continue
             if text=='/sessions' or text.startswith('/sessions '):
@@ -127,6 +135,10 @@ def main():
             console.print(f'[dim]tool calls: {r.tool_calls} | latency: {r.metrics["latency_ms"]:.0f} ms | session: {session.path.name}[/dim]')
             mids=agent.last_memory_ids
             if mids:console.print(f'[dim]memory: {", ".join(mids)}[/dim]')
+            td=agent.todos
+            if td:
+                done=sum(1 for t in td if str(t.get('status'))=='done')
+                console.print(f'[dim]todos: {done}/{len(td)} done[/dim]')
             console.print(f'[dim]tokens: {m.input_tokens} in / {m.output_tokens} out / {m.input_tokens+m.output_tokens} total | context: {_fmt_tokens(m.last_input_tokens)}/{_fmt_tokens(win)} ({ctxpct:.0f}%) of {win:,} window[/dim]' if m.last_input_tokens else f'[dim]tool calls: {r.tool_calls} (no usage data reported by endpoint)[/dim]')
         except KeyboardInterrupt:
             console.print('\n[dim]interrupted[/dim]');continue

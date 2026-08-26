@@ -15,7 +15,35 @@ from .agents import Delegator
 @dataclass
 class ToolContext:
  config:Config;workspace:Workspace;shell:Shell;approval_callback:Callable[[str,str],bool]
- git:Git;browser:Browser;github:GitHub;sandbox:DockerSandbox;stream_callback:Callable[[str],None]|None=None;delegator:Delegator|None=None;events:object|None=None;on_tool_result:Callable[[str,str],None]|None=None
+ git:Git;browser:Browser;github:GitHub;sandbox:DockerSandbox;stream_callback:Callable[[str],None]|None=None;delegator:Delegator|None=None;events:object|None=None;on_tool_result:Callable[[str,str],None]|None=None;todos:list|None=None
+
+_TODO_STATUSES=('pending','in_progress','done')
+def normalize_todos(raw):
+    """Validate a full todo-list replacement: <=12 items, one imperative line each,
+    known statuses (unknown -> pending), exact duplicates dropped, junk skipped."""
+    out=[];seen=set()
+    if not isinstance(raw,list):return out
+    for item in raw[:24]:
+        if isinstance(item,str):item={'text':item}
+        if not isinstance(item,dict):continue
+        text=str(item.get('text') or '').strip()
+        if not text:continue
+        status=str(item.get('status') or 'pending').strip().lower()
+        if status not in _TODO_STATUSES:status='pending'
+        text=text[:120]
+        if text.lower() in seen:continue
+        seen.add(text.lower());out.append({'text':text,'status':status})
+        if len(out)>=12:break
+    return out
+def diff_todos(old,new):
+    """Deterministic change summary between two todo lists, matched by text."""
+    def idx(items):return {str(t.get('text')).lower():str(t.get('status','pending')) for t in items}
+    o,n=idx(old),idx(new)
+    return {'completed':[t for t,s in n.items() if s=='done' and o.get(t)!='done'],
+            'reopened':[t for t,s in n.items() if s!='done' and o.get(t)=='done'],
+            'added':[t for t in n if t not in o],
+            'removed':[t for t in o if t not in n],
+            'in_progress':[t for t,s in n.items() if s=='in_progress']}
 
 def fn(name,desc,props=None,req=None):return {'type':'function','name':name,'description':desc,'parameters':{'type':'object','properties':props or {},'required':req or []}}
 def tool_schemas():
@@ -40,6 +68,7 @@ def tool_schemas():
  fn('github_get','Read a GitHub API resource when enabled.',{'path':{'type':'string'}},['path']),
  fn('sandbox_run','Run a command in an optional no-network Docker sandbox.',{'command':{'type':'string'}},['command']),
  fn('delegate_role','Ask an isolated planner/reviewer sub-agent for analysis. It cannot edit files.',{'role':{'type':'string','enum':['planner','reviewer']},'task':{'type':'string'}},['role','task']),
+ fn('write_todos','Write the full working todo list, replacing the previous one. Use for non-trivial multi-step tasks: lay out concrete steps before starting, keep exactly one in_progress, mark done immediately with evidence, add discovered work, drop obsolete items.',{'todos':{'type':'array','items':{'type':'object','properties':{'text':{'type':'string','description':'one imperative step'},'status':{'type':'string','enum':['pending','in_progress','done']}},'required':['text','status']}}},['todos']),
  ]
 
 _REQ={}
@@ -106,6 +135,9 @@ def _dispatch_impl(ctx,name,a):
   if name=='delegate_role':
    if not ctx.delegator: return json.dumps({'status':'error','message':'delegation unavailable'})
    return ctx.delegator.run(a['role'],a['task'])
+  if name=='write_todos':
+   old=list(ctx.todos or []);new=normalize_todos(a.get('todos'));ctx.todos=new
+   return json.dumps({'status':'completed','todos':new,'diff':diff_todos(old,new)},indent=2)
   raise ValueError(f'unknown tool: {name}')
  except Exception as e:
   payload={'status':'error','error_type':type(e).__name__,'message':str(e)}

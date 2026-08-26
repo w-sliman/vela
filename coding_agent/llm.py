@@ -219,9 +219,35 @@ class CodingAgent:
         return (f'{focus_line}Transcript (oldest first):\n{blob}\n\n'
                 'Return ONLY JSON: {"summary": "...", "keep_last_turns": <int 1-5>, "memories": [{"kind": "...", "text": "..."}]}')
     def _trim(self): self.history=self.ctx.trim(self.history)
-    def _with_memory(self,items):
-        """Append this turn's advisory memory block (if any) without persisting it to history."""
-        return items+([{'role':'user','content':self._turn_memory}] if self._turn_memory else [])
+    def _with_context_blocks(self,items):
+        """Advisory blocks appended to outgoing payloads (never persisted to history):
+        this turn's memory recall and the current todo queue."""
+        extra=[]
+        if self._turn_memory:extra.append({'role':'user','content':self._turn_memory})
+        tb=self._todos_block()
+        if tb:extra.append({'role':'user','content':tb})
+        return items+extra
+    _TODO_ICON={'done':'x','in_progress':'>','pending':' '}
+    def _todos_block(self):
+        if not getattr(self.config,'show_todos',True):return None
+        todos=self.todos
+        if not todos:return None
+        lines=[f"- [{self._TODO_ICON.get(str(t.get('status')),' ')}] {t.get('text')}" for t in todos]
+        return ('[current todos] Your working queue as last reported. Keep it updated via '
+                'write_todos; finish or drop every item before reporting overall success.\n'+'\n'.join(lines))
+    @property
+    def todos(self):
+        ctx=getattr(self,'context',None)
+        return list(getattr(ctx,'todos',None) or []) if ctx else []
+    def _dispatch(self,name,args):
+        result=dispatch(self.context,name,args)
+        if name=='write_todos':
+            try:
+                payload=json.loads(result)
+                self.session.record('todos_updated',{'todos':payload.get('todos'),'diff':payload.get('diff')})
+                self.events.emit('todos','todo list updated',items=payload.get('todos'),diff=payload.get('diff'))
+            except Exception:pass
+        return result
     def _with_retries(self,fn,delays=None):
         """Call fn with exponential backoff; re-raises the last error after all attempts."""
         if delays is None:
@@ -282,7 +308,7 @@ class CodingAgent:
             calls=self.metrics.tool_calls;self._trim()
         raise RuntimeError(f'agent exceeded {self.config.max_turns} controller turns')
     def _responses(self):
-        with Timer() as timer:r=self._with_retries(lambda:self.provider.responses(model=self.config.model,instructions=SYSTEM_PROMPT,input=self._with_memory(self.history),tools=tool_schemas()))
+        with Timer() as timer:r=self._with_retries(lambda:self.provider.responses(model=self.config.model,instructions=SYSTEM_PROMPT,input=self._with_context_blocks(self.history),tools=tool_schemas()))
         u=extract_usage(getattr(r,'usage',None));self.metrics.add(getattr(r,'usage',None),timer.elapsed_ms)
         self.session.record('usage',u if u is not None else {'available':False,'advice':USAGE_ADVICE});items=list(r.output);self.history.extend(items)
         self._emit_usage(u)
@@ -292,21 +318,21 @@ class CodingAgent:
         for c in calls:
             self.metrics.tool_calls+=1;args,err,repaired=parse_tool_arguments(c.arguments)
             self.events.emit('info',f'tool arguments: {c.name}',repaired=repaired)
-            result=json.dumps({'status':'tool_argument_error','error':err,'recovery':'Re-read the file and retry with a smaller patch; do not repeat stale text.'}) if err else dispatch(self.context,c.name,args)
+            result=json.dumps({'status':'tool_argument_error','error':err,'recovery':'Re-read the file and retry with a smaller patch; do not repeat stale text.'}) if err else self._dispatch(c.name,args)
             self.session.record('tool_call',{'name':c.name,'arguments_raw':c.arguments});self.session.record('tool_result',{'name':c.name,'result':result})
             self.history.append({'type':'function_call_output','call_id':c.call_id,'output':result})
         return None
     def _chat(self):
         tools=[{'type':'function','function':{'name':x['name'],'description':x['description'],'parameters':x['parameters']}} for x in tool_schemas()]
         if self.config.stream_chat:return self._chat_streamed(tools)
-        with Timer() as timer:r=self._with_retries(lambda:self.provider.chat(model=self.config.model,messages=[{'role':'system','content':SYSTEM_PROMPT}]+self._with_memory(self.history),tools=tools,tool_choice='auto'))
+        with Timer() as timer:r=self._with_retries(lambda:self.provider.chat(model=self.config.model,messages=[{'role':'system','content':SYSTEM_PROMPT}]+self._with_context_blocks(self.history),tools=tools,tool_choice='auto'))
         u=extract_usage(getattr(r,'usage',None));self.metrics.add(getattr(r,'usage',None),timer.elapsed_ms)
         self.session.record('usage',u if u is not None else {'available':False,'advice':USAGE_ADVICE});m=r.choices[0].message
         self._emit_usage(u)
         return self._handle_chat_message(m)
     def _chat_streamed(self,tools):
         """Streaming chat transport: text tokens emit live; tool calls accumulate."""
-        with Timer() as timer:stream=self._with_retries(lambda:self.provider.chat_stream(model=self.config.model,messages=[{'role':'system','content':SYSTEM_PROMPT}]+self._with_memory(self.history),tools=tools,tool_choice='auto'))
+        with Timer() as timer:stream=self._with_retries(lambda:self.provider.chat_stream(model=self.config.model,messages=[{'role':'system','content':SYSTEM_PROMPT}]+self._with_context_blocks(self.history),tools=tools,tool_choice='auto'))
         parts=[];tcalls={};u=None;emitted=False
         for chunk in stream:
             cu=getattr(chunk,'usage',None)
@@ -343,7 +369,7 @@ class CodingAgent:
         for c in m.tool_calls:
             self.metrics.tool_calls+=1;args,err,repaired=parse_tool_arguments(c.function.arguments)
             self.events.emit('info',f'tool arguments: {c.function.name}',repaired=repaired)
-            result=json.dumps({'status':'tool_argument_error','error':err,'recovery':'Re-read the file and retry with a smaller patch; do not repeat stale text.'}) if err else dispatch(self.context,c.function.name,args)
+            result=json.dumps({'status':'tool_argument_error','error':err,'recovery':'Re-read the file and retry with a smaller patch; do not repeat stale text.'}) if err else self._dispatch(c.function.name,args)
             self.session.record('tool_call',{'name':c.function.name,'arguments_raw':c.function.arguments});self.session.record('tool_result',{'name':c.function.name,'result':result})
             self.history.append({'role':'tool','tool_call_id':c.id,'content':result})
         return None

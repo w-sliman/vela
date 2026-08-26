@@ -72,6 +72,7 @@ review this repository for correctness issues; do not modify files
 - `/compact [focus]` — summarize older conversation turns; optional focus instruction
 - `/undo` — revert the workspace to the state before the last agent edit
 - `/memory [consolidate [focus]]` — persistent memory; `consolidate` LLM-merges duplicate/paraphrased records
+- `/todos` — the agent's current working todo list
 - `/sessions [n]` — list recent session traces (id, start, turns, first request)
 - `/resume [id|#|last]` — continue a past session as fresh digest context (`#N`/short digits = Nth newest, otherwise id prefix)
 - `/history` — recent session events
@@ -89,6 +90,7 @@ review this repository for correctness issues; do not modify files
 - Each successful edit auto-commits a git checkpoint in the workspace (`CODER_AUTO_CHECKPOINT=0` disables); `/undo` reverts the last one.
 - Relevant project memories are retrieved lexically once per user request and attached as advisory context; the ids used are shown after each turn (`memory: r2, r7`). Disable with `CODER_MEMORY_INJECT=0`; tune via `CODER_MEMORY_TOPK`, `CODER_MEMORY_MAX_CHARS`, `CODER_MEMORY_MIN_SCORE`. `/compact` also distills durable decisions into memory (`CODER_MEMORY_DISTILL=0` disables). See `docs/MEMORY.md`.
 - Memory stays curated automatically: writes enforce a record cap (`CODER_MEMORY_MAX_RECORDS`, coldest dropped first) and an optional age limit (`CODER_MEMORY_TTL_DAYS`, off by default); `/memory consolidate [focus]` asks the model to group paraphrased duplicates and merges them deterministically.
+- For non-trivial tasks the agent maintains a visible working todo list (`write_todos` tool): announced before work starts, updated live as steps finish, re-injected into every model request so it survives context trimming/compaction, and journaled with per-change diffs. Inspect anytime with `/todos`; disable via `CODER_TODOS=0`.
 - Past sessions can be continued: `/resume` rebuilds task state from any recorded trace as a compact digest (never as raw replay), keeping history/pair integrity intact.
 
 ## Architecture

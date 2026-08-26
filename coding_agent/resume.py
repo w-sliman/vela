@@ -55,7 +55,7 @@ def resolve_session(workspace,ref=None,exclude=None):
 
 def build_digest(path,max_chars=6000):
     """Mechanical task-state summary of one trace: requests, touched files, last answer."""
-    requests=[];files=[];last_answer='';compactions=0;errors=0;started=''
+    requests=[];files=[];last_answer='';compactions=0;errors=0;started='';last_todos=None
     with path.open(encoding='utf-8') as fh:
         for line in fh:
             try:e=json.loads(line)
@@ -77,6 +77,7 @@ def build_digest(path,max_chars=6000):
             elif k=='compact':
                 if p.get('compacted'):compactions+=1
             elif k=='error':errors+=1
+            elif k=='todos_updated':last_todos=p.get('todos') or []
     files=list(dict.fromkeys(files))
     def compose(reqs):
         out=[f'[Resumed session {path.stem}] Task state reconstructed from the trace — verify current file contents before editing.',
@@ -88,6 +89,10 @@ def build_digest(path,max_chars=6000):
         if files:out.append('Files touched: '+', '.join(files[:15])+(f' (+{len(files)-15} more)' if len(files)>15 else ''))
         if compactions:out.append(f'Compactions already applied: {compactions}')
         if errors:out.append(f'Recorded transport errors: {errors}')
+        open_items=[t for t in (last_todos or []) if str(t.get('status'))!='done']
+        if open_items:
+            out.append('Open todos left by that session (pick up where it stopped):')
+            out+= [f"- [{t.get('status')}] {t.get('text')}" for t in open_items[:12]]
         if last_answer:out.append('Last assistant message (tail): '+_trunc(last_answer,400))
         return '\n'.join(out)
     shown=requests[-20:]
