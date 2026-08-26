@@ -20,6 +20,11 @@ COMPACT_SYSTEM=('You compress coding-agent conversation transcripts. Respond wit
  'later retrieval). Keep each text under ~200 chars; use an empty list when nothing qualifies.')
 DEFAULT_KEEP_TURNS=2
 KEEP_MAX=5
+CONSOLIDATE_SYSTEM=("You curate a coding agent's persistent project memory. Respond with ONLY JSON: "
+ '{"groups":[{"ids":["r1","r5"],"kind":"decision","text":"canonical merged text","tags":["..."],"paths":["..."]}]}. '
+ 'Group records that state the same underlying fact (duplicates or paraphrases; 2+ ids per group) and '
+ 'rewrite them into one canonical wording, merging their tags/paths. Never invent facts, never drop '
+ 'unique information, never group unrelated records. Omit groups when nothing overlaps.')
 
 def _turns(history):
     """Group history into user-turns: one user message plus everything until the next."""
@@ -69,6 +74,20 @@ def _clean_memories(raw):
         tags=[str(t)[:60] for t in (m.get('tags') or [])][:8];paths=[str(p)[:200] for p in (m.get('paths') or [])][:8]
         out.append((kind,text,tags,paths))
     return out
+
+def _clean_groups(raw,valid_ids):
+    """Validate consolidator-proposed merge groups; only known-id groups of 2+ survive."""
+    out=[]
+    if not isinstance(raw,list):return out
+    for g in raw:
+        if not isinstance(g,dict):continue
+        seen=list(dict.fromkeys(str(i) for i in (g.get('ids') or [])))
+        ids=[i for i in seen if i in valid_ids];text=str(g.get('text') or '').strip()
+        if len(ids)>=2 and text and len(text)<=500:
+            out.append({'ids':ids,'kind':str(g.get('kind') or 'fact').strip()[:40] or 'fact','text':text,
+                        'tags':[str(t)[:60] for t in (g.get('tags') or [])][:8],
+                        'paths':[str(p)[:200] for p in (g.get('paths') or [])][:8]})
+    return out
 def _recent_paths(history,limit=16):
     """Workspace paths touched by recent tool calls, harvested from recorded tool arguments."""
     out=[]
@@ -91,8 +110,9 @@ class MemoryInjector:
     HEADER=('[project memory] Advisory recall from prior sessions — may be stale; '
             'current workspace files always win. Context only, do not respond to this.')
     def __init__(self,cfg,session):
-        self.cfg=cfg;self.session=session
+        self.cfg=cfg;self.session=session;self.last_ids=[]
     def build(self,user_text,history):
+        self.last_ids=[]
         if not getattr(self.cfg,'memory_inject',False):return None
         try:
             recs=ProjectMemory(self.cfg.workspace).records()
@@ -100,7 +120,7 @@ class MemoryInjector:
             sel=select_records(recs,user_text,_recent_paths(history),top_k=self.cfg.memory_top_k,
                                max_chars=self.cfg.memory_max_chars,min_score=self.cfg.memory_min_score)
             if not sel:return None
-            ids=[r.get('id') for _,r in sel]
+            ids=[r.get('id') for _,r in sel];self.last_ids=ids
             ProjectMemory(self.cfg.workspace).touch(ids)
             body='\n'.join(f'- {render_record(r)}' for _,r in sel)
             self.session.record('memory_injected',{'ids':ids,'chars':len(body)})
@@ -157,12 +177,37 @@ class CodingAgent:
         try:
             pm=ProjectMemory(self.config.workspace)
             saved=[pm.add(kind,text,tags,paths) for kind,text,tags,paths in candidates]
+            pm.prune(getattr(self.config,'memory_max_records',None),getattr(self.config,'memory_ttl_days',0))
         except Exception as exc:
             self.session.record('memory_distilled',{'error':str(exc)});return []
         if saved:
             self.session.record('memory_distilled',{'ids':saved})
             self.events.emit('info',f'compact: persisted {len(saved)} project memory item(s)')
         return saved
+    def consolidate_memory(self,focus=None):
+        """LLM groups paraphrased/duplicate memories; Python merges them deterministically."""
+        pm=ProjectMemory(self.config.workspace);recs=pm.records()
+        if len(recs)<2:return {'merged':0,'removed':0,'pruned':0,'before':len(recs),'after':len(recs),'reason':'fewer than 2 records'}
+        listing='\n'.join(f"{r['id']} [{r.get('kind','fact')}] tags={r.get('tags',[])} paths={r.get('paths',[])} hits={r.get('hits',0)} :: {r.get('text','')}" for r in recs)[:20000]
+        prompt=(f'{"Focus: "+focus+"\n" if focus else ""}Current memory records:\n{listing}\n\n'
+                'Return ONLY the JSON groups object; use an empty list when nothing overlaps.')
+        with Timer() as timer:r=self._with_retries(lambda:self.provider.chat(model=self.config.model,messages=[{'role':'system','content':CONSOLIDATE_SYSTEM},{'role':'user','content':prompt}]))
+        u=extract_usage(getattr(r,'usage',None));self.metrics.add(getattr(r,'usage',None),timer.elapsed_ms)
+        self.session.record('usage',u if u is not None else {'available':False,'advice':USAGE_ADVICE})
+        raw=(r.choices[0].message.content or '').strip()
+        value,err,_=parse_tool_arguments(raw)
+        groups=_clean_groups(value.get('groups') if isinstance(value,dict) else None,{str(x['id']) for x in recs})
+        before=len(recs)
+        merged,removed=pm.consolidate(groups)
+        pruned=pm.prune(getattr(self.config,'memory_max_records',None),getattr(self.config,'memory_ttl_days',0))
+        info={'merged':len(merged),'removed':len(removed),'pruned':len(pruned),'before':before,
+              'after':before-len(removed)-len(pruned),'groups':len(groups)}
+        self.session.record('memory_consolidated',{'focus':focus,**info})
+        if merged or removed:
+            self.events.emit('info',f"memory: merged {len(merged)} group(s), removed {len(removed)} record(s)")
+        return info
+    @property
+    def last_memory_ids(self):return list(getattr(self.memory,'last_ids',[]))
     def _summarizer_input(self,turns,focus,max_chars=24000):
         lines=[]
         for ti,t in enumerate(turns,1):

@@ -93,7 +93,7 @@ def _dispatch_impl(ctx,name,a):
    if not ctx.approval_callback('git add -A && git commit','creating a Git checkpoint changes repository history'):return json.dumps({'status':'denied'})
    r=ctx.git.checkpoint(a['message']);return json.dumps({'returncode':r.returncode,'stdout':r.stdout,'stderr':r.stderr},indent=2)
   if name=='remember':
-   from .memory import ProjectMemory; rid=ProjectMemory(ctx.workspace.root).add(a['kind'],a['text'],a.get('tags'),a.get('paths'));return f'memory saved ({rid})'
+   from .memory import ProjectMemory; p=ProjectMemory(ctx.workspace.root); rid=p.add(a['kind'],a['text'],a.get('tags'),a.get('paths'));p.prune(getattr(ctx.config,'memory_max_records',None),getattr(ctx.config,'memory_ttl_days',0));return f'memory saved ({rid})'
   if name=='recall_memory':
    from .memory import ProjectMemory;return ProjectMemory(ctx.workspace.root).text()
   if name=='forget_memory':

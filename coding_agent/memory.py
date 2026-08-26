@@ -129,6 +129,46 @@ class ProjectMemory:
         for r in d['records']:
             if str(r.get('id')) in want:r['hits']=int(r.get('hits',0))+1;r['last_seen']=now
         self._write(d)
+    def prune(self,max_records=None,ttl_days=0):
+        """Deterministic cleanup: drop records untouched longer than ttl_days (when >0),
+        then lowest-hits/oldest-last_seen until within max_records. Returns removed ids."""
+        d=self.load();recs=list(d['records']);removed=[]
+        if ttl_days and recs:
+            try:cutoff=datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(days=float(ttl_days))
+            except ValueError:cutoff=None
+            if cutoff is not None:
+                stale=[r for r in recs if _rtime(r)<cutoff]
+                if stale:
+                    recs=[r for r in recs if r not in stale];removed+=[str(r['id']) for r in stale]
+        if max_records is not None and len(recs)>int(max_records):
+            cap=int(max_records)
+            order=sorted(range(len(recs)),key=lambda i:(int(recs[i].get('hits',0)),str(recs[i].get('last_seen',''))))
+            drop=set(order[:len(recs)-cap])
+            removed+=[str(recs[i]['id']) for i in sorted(drop)]
+            recs=[r for i,r in enumerate(recs) if i not in drop]
+        if removed:d['records']=recs;self._write(d)
+        return removed
+    def consolidate(self,groups):
+        """Apply upstream-proposed merges: primary id keeps identity, text/kind replaced,
+        tags/paths unioned when not supplied, hits summed, dates spanned. Singleton and
+        unknown-id groups are ignored. Returns (merged_ids, removed_ids)."""
+        d=self.load();recs=d['records'];by={str(r.get('id')):r for r in recs};merged=[];removed=[]
+        for g in groups or []:
+            members=[by[str(i)] for i in (g.get('ids') or []) if str(i) in by]
+            if len(members)<2 or not str(g.get('text') or '').strip():continue
+            prim=members[0]
+            prim['text']=str(g.get('text') or prim.get('text',''))
+            prim['kind']=str(g.get('kind') or prim.get('kind','fact'))
+            prim['tags']=list(dict.fromkeys([str(t) for t in (g.get('tags') if g.get('tags') is not None else sum((m.get('tags',[]) for m in members),[]))]))
+            prim['paths']=list(dict.fromkeys([str(p) for p in (g.get('paths') if g.get('paths') is not None else sum((m.get('paths',[]) for m in members),[]))]))
+            prim['hits']=sum(int(m.get('hits',0)) for m in members)
+            prim['created']=min(str(m.get('created','')) for m in members)
+            prim['last_seen']=max(str(m.get('last_seen','')) for m in members)
+            for m in members[1:]:
+                if m in recs:recs.remove(m);removed.append(str(m['id']))
+            merged.append(str(prim['id']))
+        if merged or removed:self._write(d)
+        return merged,removed
     def text(self):
         lines=[render_record(r)+f" (hits:{r.get('hits',0)}, seen:{str(r.get('last_seen',''))[:10]})" for r in self.records()[:200]]
         return ('\n'.join(lines)[:12000]) or '(project memory is empty)'

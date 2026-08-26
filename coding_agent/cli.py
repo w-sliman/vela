@@ -52,7 +52,7 @@ def main():
             if text in {'/quit','/exit'}:break
             if text=='/help':
                 t=Table(title='Commands');t.add_column('Command');t.add_column('Meaning')
-                for x in [('/help','commands'),('/pwd','workspace'),('/tree','tree'),('/model','model/endpoint'),('/usage','session token usage'),('/compact [focus]','summarize older conversation turns'),('/undo','revert last agent edit'),('/memory','persistent memory'),('/sessions [n]','list recent session traces'),('/resume [id|#]','continue a past session as fresh digest context'),('/history','session events'),('/clear','clear LLM context'),('/quit','exit')]:t.add_row(*x)
+                for x in [('/help','commands'),('/pwd','workspace'),('/tree','tree'),('/model','model/endpoint'),('/usage','session token usage'),('/compact [focus]','summarize older conversation turns'),('/undo','revert last agent edit'),('/memory [consolidate]','persistent memory; consolidate merges duplicates'),('/sessions [n]','list recent session traces'),('/resume [id|#]','continue a past session as fresh digest context'),('/history','session events'),('/clear','clear LLM context'),('/quit','exit')]:t.add_row(*x)
                 console.print(t);continue
             if text=='/pwd':console.print(c.workspace);continue
             if text=='/tree':console.print('\n'.join(ws.list_files()));continue
@@ -73,8 +73,17 @@ def main():
                     r=ctx.git.undo_last()
                     console.print('[green]undone: workspace restored to previous checkpoint.[/green]' if r.returncode==0 else f'[red]undo failed: {r.stderr.strip()}[/red]')
                 continue
-            if text=='/memory':
-                from .memory import ProjectMemory;console.print(ProjectMemory(c.workspace).text());continue
+            if text=='/memory' or text.startswith('/memory '):
+                from .memory import ProjectMemory;pm=ProjectMemory(c.workspace)
+                arg=text[len('/memory'):].strip()
+                if arg.startswith('consolidate'):
+                    focus=arg[len('consolidate'):].strip() or None
+                    console.print('[dim]consolidating memory…[/dim]')
+                    res=agent.consolidate_memory(focus)
+                    if res.get('reason'):console.print(f"[yellow]{res['reason']} — nothing to do.[/yellow]")
+                    else:console.print(f"[dim]memory consolidated: {res['merged']} group(s) merged, {res['removed']} record(s) removed, {res['pruned']} pruned | records {res['before']}→{res['after']}[/dim]")
+                else:console.print(pm.text())
+                continue
             if text=='/history':
                 for e in session.recent():console.print(e)
                 continue
@@ -116,6 +125,8 @@ def main():
             if not r.streamed:console.print(Markdown(r.text))
             m=agent.metrics;win=c.context_window_tokens;ctxpct=(m.last_input_tokens/win*100) if win and m.last_input_tokens else 0.0
             console.print(f'[dim]tool calls: {r.tool_calls} | latency: {r.metrics["latency_ms"]:.0f} ms | session: {session.path.name}[/dim]')
+            mids=agent.last_memory_ids
+            if mids:console.print(f'[dim]memory: {", ".join(mids)}[/dim]')
             console.print(f'[dim]tokens: {m.input_tokens} in / {m.output_tokens} out / {m.input_tokens+m.output_tokens} total | context: {_fmt_tokens(m.last_input_tokens)}/{_fmt_tokens(win)} ({ctxpct:.0f}%) of {win:,} window[/dim]' if m.last_input_tokens else f'[dim]tool calls: {r.tool_calls} (no usage data reported by endpoint)[/dim]')
         except KeyboardInterrupt:
             console.print('\n[dim]interrupted[/dim]');continue

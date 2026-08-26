@@ -31,11 +31,14 @@ def make_agent(tmp_path, provider, **over):
 
 
 class FakeProvider:
-    def __init__(self, content='ok'):
+    def __init__(self, content='ok', error=None):
         self.content = content
+        self.error = error
         self.calls = []
 
     def chat(self, **kw):
+        if self.error:
+            raise self.error
         self.calls.append(kw)
         msg = NS(content=self.content, tool_calls=None)
         return NS(choices=[NS(message=msg)], usage=NS(prompt_tokens=10, completion_tokens=5, total_tokens=15))
@@ -153,13 +156,82 @@ def test_memory_config_defaults(monkeypatch, tmp_path):
     monkeypatch.setenv('OPENAI_API_KEY', 'k'); monkeypatch.setenv('OPENAI_MODEL', 'm')
     c = Config.from_env(str(tmp_path))
     assert (c.memory_inject, c.memory_top_k, c.memory_max_chars, c.memory_min_score) == (True, 4, 1500, 0.5)
+    assert (c.memory_distill, c.memory_max_records, c.memory_ttl_days) == (True, 200, 0)
 
 def test_memory_config_env_overrides(monkeypatch, tmp_path):
     monkeypatch.setenv('OPENAI_API_KEY', 'k'); monkeypatch.setenv('OPENAI_MODEL', 'm')
     monkeypatch.setenv('CODER_MEMORY_INJECT', '0'); monkeypatch.setenv('CODER_MEMORY_TOPK', '7')
     monkeypatch.setenv('CODER_MEMORY_MAX_CHARS', '800'); monkeypatch.setenv('CODER_MEMORY_MIN_SCORE', '2.5')
+    monkeypatch.setenv('CODER_MEMORY_MAX_RECORDS', '25'); monkeypatch.setenv('CODER_MEMORY_TTL_DAYS', '30')
     c = Config.from_env(str(tmp_path))
     assert (c.memory_inject, c.memory_top_k, c.memory_max_chars, c.memory_min_score) == (False, 7, 800, 2.5)
+    assert (c.memory_max_records, c.memory_ttl_days) == (25, 30)
+
+
+# --- pruning ---
+
+def test_prune_cap_drops_lowest_hits_then_oldest(tmp_path):
+    m = ProjectMemory(tmp_path)
+    ids = [m.add('fact', f'note {i}') for i in range(4)]
+    m.touch([ids[3]]); m.touch([ids[3]])                      # r4 becomes hot
+    removed = m.prune(max_records=2)
+    assert removed == [ids[0], ids[1]]                        # coldest two dropped
+    assert {r['id'] for r in m.records()} == {ids[2], ids[3]}
+    assert m.prune(max_records=10) == []                      # under cap -> no-op
+
+def test_prune_ttl_drops_stale_and_respects_off(tmp_path):
+    m = ProjectMemory(tmp_path)
+    ancient = datetime.now(tz.utc) - timedelta(days=400)
+    m.add('fact', 'ancient note')
+    mf = tmp_path / '.coder-agent' / 'memory.json'
+    d = json.loads(mf.read_text())
+    d['records'][0]['created'] = d['records'][0]['last_seen'] = ancient.isoformat()
+    mf.write_text(json.dumps(d))
+    fresh = m.add('fact', 'fresh note')
+    assert m.prune(ttl_days=0) == []                          # TTL off -> never expires
+    assert m.prune(ttl_days=90) == ['r1']
+    assert [r['id'] for r in m.records()] == [fresh]
+
+# --- consolidation ---
+
+def test_consolidate_merges_group_keeps_primary_identity(tmp_path):
+    m = ProjectMemory(tmp_path)
+    a = m.add('fact', 'tests run with pytest', tags=['testing'])
+    b = m.add('preference', 'pytest is the runner here', paths=['pyproject.toml'])
+    m.touch([a])
+    merged, removed = m.consolidate([{'ids': [a, b], 'kind': 'decision',
+                                      'text': 'The project tests everything through pytest.'}])
+    assert merged == [a] and removed == [b]
+    recs = m.records(); assert len(recs) == 1 and recs[0]['id'] == a
+    assert recs[0]['text'] == 'The project tests everything through pytest.'
+    assert recs[0]['tags'] == ['testing'] and recs[0]['paths'] == ['pyproject.toml']
+    assert recs[0]['hits'] == 1                               # summed across members
+
+def test_consolidate_ignores_singletons_unknowns_and_supplies_union_defaults(tmp_path):
+    m = ProjectMemory(tmp_path)
+    a = m.add('fact', 'x one', tags=['t1']); b = m.add('fact', 'x two', tags=['t2'])
+    merged, removed = m.consolidate([
+        {'ids': [a], 'text': 'singleton ignored'},
+        {'ids': ['r99', 'r98'], 'text': 'unknown ids ignored'},
+        {'ids': [a, b], 'text': ''},                           # empty canonical text ignored
+        {'ids': [a, b], 'text': 'merged x', 'tags': None, 'paths': None},
+    ])
+    assert merged == [a] and removed == [b]
+    r = m.records()[0]
+    assert r['text'] == 'merged x' and sorted(r['tags']) == ['t1', 't2']   # union default
+
+def test_clean_groups_validation():
+    from coding_agent.llm import _clean_groups
+    out = _clean_groups([
+        {'ids': ['r1', 'r2'], 'text': 'ok merge'},
+        {'ids': ['r1'], 'text': 'too few'},                    # singleton
+        {'ids': ['rx', 'ry'], 'text': 'unknown'},              # unknown ids
+        {'ids': ['r1', 'r2'], 'text': ''},                     # empty text
+        {'ids': ['r2', 'r1', 'r1'], 'text': 'dedup'},          # dup ids collapse
+        'junk',
+    ], valid_ids={'r1', 'r2'})
+    assert [g['text'] for g in out] == ['ok merge', 'dedup']
+    assert out[1]['ids'] == ['r2', 'r1']
 
 
 # --- tools ---
@@ -173,6 +245,26 @@ def test_remember_and_forget_tools_roundtrip(tmp_path):
     assert dispatch(c, 'recall_memory', {}) .count('[r1/decision]') == 1
     removed = json.loads(dispatch(c, 'forget_memory', {'id': 'r1'}))
     assert removed['removed'] == 1 and ProjectMemory(tmp_path).records() == []
+
+def test_remember_tool_prunes_to_configured_cap(tmp_path):
+    from coding_agent.browser import Browser
+    from coding_agent.config import Config
+    from coding_agent.github import GitHub
+    from coding_agent.sandbox import DockerSandbox
+    from coding_agent.git import Git
+    from coding_agent.shell import Shell
+    from coding_agent.tools import ToolContext
+    from coding_agent.workspace import Workspace
+    cfg = Config(None, None, None, 'auto', tmp_path, 'prompt', 5000, 30000, 10, 10,
+                 20, 100, 10000, False, False, False, True, False, memory_max_records=2)
+    c = ToolContext(cfg, Workspace(tmp_path), Shell(cfg), lambda *_: True,
+                    Git(tmp_path), Browser(), GitHub(), DockerSandbox(tmp_path))
+    pm = ProjectMemory(tmp_path)
+    keep = pm.add('fact', 'hot note'); pm.touch([keep])
+    pm.add('fact', 'cold stale note')
+    dispatch(c, 'remember', {'kind': 'fact', 'text': 'brand new note'})
+    texts = [r['text'] for r in ProjectMemory(tmp_path).records()]
+    assert len(texts) == 2 and 'hot note' in texts and 'cold stale note' not in texts
 
 
 # --- per-turn injection ---
@@ -279,6 +371,47 @@ def test_clean_memories_caps_and_defaults():
     out = _clean_memories([{'text': 't' * 600}, {'kind': 'p', 'text': 'ok'}, {}, None])
     assert [o[1] for o in out] == ['ok'] and out[0][0] == 'p'
     assert _clean_memories('nope') == []
+
+def test_consolidate_memory_merges_paraphrases_and_journals(tmp_path):
+    pm = ProjectMemory(tmp_path)
+    pm.add('fact', 'tests run with pytest')
+    pm.add('fact', 'the project runs its tests using pytest')
+    p = FakeProvider(json.dumps({'groups': [{'ids': ['r1', 'r2'], 'kind': 'fact',
+                                             'text': 'Tests run via pytest -q.', 'tags': ['testing']}]}))
+    agent = make_agent(tmp_path, p)
+    info = agent.consolidate_memory()
+    assert info['merged'] == 1 and info['removed'] == 1 and info['after'] == 1
+    recs = pm.records()
+    assert recs[0]['text'] == 'Tests run via pytest -q.' and recs[0]['tags'] == ['testing']
+    lines = agent.session.path.read_text().splitlines()
+    assert any(json.loads(l)['kind'] == 'memory_consolidated' for l in lines)
+
+def test_consolidate_memory_prose_reply_is_a_safe_noop(tmp_path):
+    pm = ProjectMemory(tmp_path)
+    pm.add('fact', 'one'); pm.add('fact', 'two')
+    agent = make_agent(tmp_path, FakeProvider('I would probably merge them.'))
+    info = agent.consolidate_memory()
+    assert info['merged'] == 0 and info['removed'] == 0 and len(pm.records()) == 2
+
+def test_consolidate_memory_needs_two_records_and_propagates_transport_errors(tmp_path):
+    pm = ProjectMemory(tmp_path); pm.add('fact', 'lonely')
+    agent = make_agent(tmp_path, FakeProvider('{}'))
+    assert agent.consolidate_memory()['reason'] == 'fewer than 2 records'
+    agent2 = make_agent(tmp_path, FakeProvider(error=RuntimeError('down')))
+    pm.add('fact', 'second'); 
+    import pytest
+    with pytest.raises(RuntimeError):
+        agent2.consolidate_memory()
+
+def test_last_memory_ids_exposed_for_cli_line(tmp_path):
+    _seed(tmp_path)
+    agent = make_agent(tmp_path, FakeProvider())
+    assert agent.last_memory_ids == []
+    agent.run('fix the failing tests')
+    assert agent.last_memory_ids == ['r1']
+    off = make_agent(tmp_path, FakeProvider(), memory_inject=False)
+    off.run('fix the failing tests')
+    assert off.last_memory_ids == []
 
 
 # --- rendering ---

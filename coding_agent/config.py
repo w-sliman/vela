@@ -17,6 +17,7 @@ class Config:
     memory_inject:bool=True; memory_top_k:int=4; memory_max_chars:int=1500; memory_min_score:float=0.5
     memory_distill:bool=True
     resume_max_chars:int=6000
+    memory_max_records:int=200; memory_ttl_days:int=0
     @classmethod
     def from_env(cls, workspace_arg=None):
         load_dotenv()
@@ -37,4 +38,5 @@ class Config:
           os.getenv('CODER_STREAM','1')!='0',os.getenv('CODER_AUTO_CHECKPOINT','1')!='0',
           os.getenv('CODER_MEMORY_INJECT','1')!='0',int(os.getenv('CODER_MEMORY_TOPK','4')),int(os.getenv('CODER_MEMORY_MAX_CHARS','1500')),float(os.getenv('CODER_MEMORY_MIN_SCORE','0.5')),
           os.getenv('CODER_MEMORY_DISTILL','1')!='0',
-          int(os.getenv('CODER_RESUME_MAX_CHARS','6000')))
+          int(os.getenv('CODER_RESUME_MAX_CHARS','6000')),
+          int(os.getenv('CODER_MEMORY_MAX_RECORDS','200')),int(os.getenv('CODER_MEMORY_TTL_DAYS','0')))

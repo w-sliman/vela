@@ -72,3 +72,23 @@ Ref grammar: `last`/none = newest; `#N` or a 1–2 digit number = Nth newest;
 anything else = session-id prefix match. Budget via `CODER_RESUME_MAX_CHARS`
 (6000). If a digest would overflow it, oldest requests are dropped first — the
 header and newest state always survive.
+
+## Curation & limits
+
+Memory is enforced-bounded so it can't silently bloat:
+
+- **Cap** — `CODER_MEMORY_MAX_RECORDS` (200): every write path (`remember`,
+  distillation) prunes back to the cap deterministically — lowest `hits`, then
+  oldest `last_seen`, dropped first. Hot, recently used memories survive.
+- **TTL** — `CODER_MEMORY_TTL_DAYS` (0 = off): records untouched longer than
+  this expire on the same prune passes.
+- **Consolidation** — `/memory consolidate [focus]` shows the model every record
+  and asks it to group duplicates/paraphrases (2+ ids per group, canonical
+  wording, merged tags/paths). Python performs the merge: the primary id keeps
+  its identity, hits are summed, dates spanned, members removed; singleton or
+  unknown-id groups are ignored. Journaled as `memory_consolidated`. The model
+  only ever *proposes groups* — grouping, wording and all writes are validated
+  and executed by deterministic code.
+- **Visibility** — after each turn the REPL prints which memory ids were
+  injected (`memory: r2, r7`), so you always know what the model was reminded
+  of.
