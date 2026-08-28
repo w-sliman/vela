@@ -36,6 +36,8 @@ def make_approval_callback(mode):
     return approval_callback
 def show_banner(c):
     console.print(Panel.fit(f'[bold cyan]Workspace Coding Agent v{__version__}[/bold cyan]\n[dim]Inspect • Edit • Run • Test • Review[/dim]\n\nWorkspace: [bold]{c.workspace}[/bold]\nModel: [bold]{c.model or "not configured"}[/bold]\nEndpoint: [bold]{c.base_url or "OpenAI default"}[/bold]\nAPI: [bold]{c.api_mode}[/bold]\nApproval: [bold]{c.approval_mode}[/bold]',border_style='cyan'))
+    if getattr(c, 'approval_edits', False):
+        console.print('[yellow]Edit approval ON — every file change asks first[/yellow]')
 def main():
     p=argparse.ArgumentParser(description='Interactive venv-native coding agent');p.add_argument('--workspace');p.add_argument('--plan',action='store_true');a=p.parse_args()
     c=Config.from_env(a.workspace);ws=Workspace(c.workspace,c.max_file_chars);shell=Shell(c);session=Session(c.workspace)

@@ -77,6 +77,13 @@ def _build_req():
  _REQ={s['name']:tuple(s['parameters'].get('required',())) for s in tool_schemas()}
 _build_req()
 
+def _approve_edit(ctx,label,old,new,path):
+ """Optional consent gate for file edits (CODER_APPROVAL_EDITS=1): show the
+ computed diff through the approval layer before anything is written."""
+ if not getattr(ctx.config,'approval_edits',False):return True
+ d=ctx.workspace.diff(old,new,path)
+ preview=d if len(d)<=1200 else d[:1170]+'\n… [truncated]'
+ return bool(ctx.approval_callback(label,preview))
 def _checkpoint(ctx,label):
     """Best-effort post-edit snapshot; git problems never break editing."""
     if not getattr(ctx.config,'auto_checkpoint',False) or not ctx.git:return None
@@ -94,6 +101,7 @@ def _dispatch_impl(ctx,name,a):
    old='';
    try:old=ctx.workspace.read_raw(a['path'])
    except FileNotFoundError:pass
+   if not _approve_edit(ctx,f'edit {a["path"]}',old,a['content'],a['path']):return json.dumps({'status':'denied','reason':'user declined this edit'},indent=2)
    result=ctx.workspace.write_file(a['path'],a['content'],a.get('expected_hash'))
    cp=_checkpoint(ctx,f'auto: write_file {a["path"]}')
    return json.dumps({'status':'completed','message':result,'diff':ctx.workspace.diff(old,a['content'],a['path']),'checkpoint':cp},indent=2)
@@ -105,6 +113,7 @@ def _dispatch_impl(ctx,name,a):
     updated=replace_lines(original,int(a['start_line']),int(a.get('end_line') or a['start_line']),a['new'])
    else:
     updated=patch_or_replace(original,path,a.get('patch'),a.get('old'),a.get('new'),int(a.get('occurrence',1)),bool(a.get('fuzzy',False)))
+   if not _approve_edit(ctx,f'edit {path}',original,updated,path):return json.dumps({'status':'denied','reason':'user declined this edit'},indent=2)
    ctx.workspace.write_file(path,updated,expected)
    cp=_checkpoint(ctx,f'auto: {name} {path}')
    return json.dumps({'status':'completed','diff':ctx.workspace.diff(original,updated,path),'sha256':ctx.workspace.hash_file(path),'checkpoint':cp},indent=2)

@@ -58,7 +58,7 @@ def test_edit_tracking_flags_set_and_clear(tmp_path):
     assert agent._edited_since_check is True
     agent._dispatch('run_command', {'command': 'echo no-check-here'})
     assert agent._edited_since_check is True          # non-check commands don't clear
-    agent._dispatch('run_command', {'command': 'python -m pytest --version'})
+    agent._dispatch('run_command', {'command': 'python3 -m unittest --help'})
     assert agent._edited_since_check is False         # passing check command clears
 
 
