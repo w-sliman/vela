@@ -1,10 +1,14 @@
 from __future__ import annotations
-import os, re, subprocess, threading
+import os, re, signal, subprocess, threading
 from dataclasses import dataclass
 from .policy import Decision, classify_command
 @dataclass(frozen=True)
 class ShellResult:
     command:str; returncode:int; stdout:str; stderr:str; decision:Decision
+def _kill_tree(p):
+    """Kill the child's whole process group so grandchildren cannot outlive a timeout."""
+    try:os.killpg(os.getpgid(p.pid),signal.SIGKILL)
+    except (ProcessLookupError,PermissionError,AttributeError):p.kill()
 _SECRET_KEY_RE=re.compile(r'(API_?KEY|TOKEN|SECRET|PASSWORD)',re.I)
 def child_env():
     """Environment for child processes with secret-shaped variables removed."""
@@ -21,7 +25,7 @@ class Shell:
         d=self.classify(command)
         if d.action=='deny': raise PermissionError(d.reason)
         if d.action=='approve' and not approved: raise PermissionError(f'approval required: {d.reason}')
-        p=subprocess.Popen(command,shell=True,cwd=self.config.workspace,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,env=child_env(),bufsize=1)
+        p=subprocess.Popen(command,shell=True,cwd=self.config.workspace,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,env=child_env(),bufsize=1,start_new_session=True)
         chunks=[]
         def drain():
             for line in p.stdout:
@@ -30,7 +34,7 @@ class Shell:
         t=threading.Thread(target=drain,daemon=True);t.start()
         try: p.wait(timeout=timeout or self.config.command_timeout)
         except subprocess.TimeoutExpired:
-            p.kill(); t.join(.2); out=''.join(chunks)
+            _kill_tree(p); t.join(.2); out=''.join(chunks)
             return ShellResult(command,124,out[:self.config.max_tool_output]+'\ncommand timed out','',d)
         t.join(.2);out=''.join(chunks)
         return ShellResult(command,p.returncode,out[:self.config.max_tool_output],'',d)

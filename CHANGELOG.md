@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Fixes & hardening
+- `/usage` no longer crashes with `NameError` (undefined `win`); the context-fill line renders again.
+- Policy: shell commands referencing `..` path segments, `~` expansions, or `$HOME`-style environment variables now require approval, closing a workspace-escape bypass for safe-prefixed commands (`cat ../../etc/passwd`, `cat ~/.ssh/id_rsa`, …).
+- `sandbox_run` is now subject to the same policy/approval layer as `run_command` (previously it bypassed both, including the edit-approval gate).
+- `/undo` honors the configured approval mode and only reverts agent auto-checkpoints (commit messages starting with `auto: `) when that checkpoint is the latest commit — user commits are never reverted.
+- Verify gate now parses tool-result JSON instead of substring-matching, and check-command detection ignores quoted arguments (`git commit -m "test"` no longer counts as a passing check).
+- Timed-out shell commands are killed with their whole process group (`start_new_session` + `killpg`), so grandchildren cannot outlive the timeout.
+- Streaming chat: mid-stream failures restart the request with the usual backoff, and the latency timer now covers the full stream instead of only stream creation.
+- OpenAI client gets a 120s per-request timeout (was the ~10-minute default).
+- `ContextManager.trim` no longer re-serializes the whole history on every pop (O(n²) → O(n)).
+- `memory.json` writes are atomic (temp file + rename) and read-modify-write cycles take an advisory `flock`, so concurrent access cannot corrupt or lose records.
+- `.env` kept mode 600.
+- Docs (SECURITY/USAGE/TOOLS/EDITING) updated to match; 13 new tests (policy escapes, sandbox gate, checkpoint-scoped undo, apply_patch denial, diff-truncation preview, `/usage` regression).
+
 ## 1.2.0 — 2026-08-26
 
 ### Memory: lexical retrieval & per-turn injection

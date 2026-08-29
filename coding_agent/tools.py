@@ -140,7 +140,10 @@ def _dispatch_impl(ctx,name,a):
   if name=='browser_open':return json.dumps(ctx.browser.open(a['url']),indent=2)
   if name=='github_get':return json.dumps(ctx.github.request('GET',a['path']),indent=2)[:ctx.config.max_tool_output]
   if name=='sandbox_run':
-   r=ctx.sandbox.run(a['command']);return json.dumps({'returncode':r.returncode,'stdout':r.stdout,'stderr':r.stderr},indent=2)
+    d=ctx.shell.classify(a['command'])
+    if d.action=='deny':return json.dumps({'status':'denied','reason':d.reason},indent=2)
+    if d.action=='approve' and not ctx.approval_callback(a['command'],d.reason):return json.dumps({'status':'denied','reason':'user declined approval'},indent=2)
+    r=ctx.sandbox.run(a['command']);return json.dumps({'status':'completed','returncode':r.returncode,'stdout':r.stdout,'stderr':r.stderr},indent=2)
   if name=='delegate_role':
    if not ctx.delegator: return json.dumps({'status':'error','message':'delegation unavailable'})
    return ctx.delegator.run(a['role'],a['task'])

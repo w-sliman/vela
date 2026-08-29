@@ -24,7 +24,16 @@ KEEP_MAX=5
 class PauseInterrupt(Exception):
     """Raised when the user interrupted a run; context stays intact for /continue."""
 _EDIT_TOOLS=frozenset({'write_file','replace_text','apply_patch'})
-_VERIFY_HINTS=('pytest',' test','tests','mypy','ruff','flake8','unittest','tox','compileall')
+_VERIFY_HINTS=('pytest','test','tests','mypy','ruff','flake8','unittest','tox','compileall')
+_QUOTED_ARG_RE=re.compile(r'"[^"]*"|\'[^\']*\'')
+def _is_check_command(command):
+    """True when the command looks like a test/check invocation.
+
+    Quoted arguments are ignored first, so e.g. `git commit -m "test"` does
+    not count as a check.
+    """
+    s=_QUOTED_ARG_RE.sub(' ',str(command))
+    return any(re.search(r'\b'+h+r'\b',s) for h in _VERIFY_HINTS)
 VERIFY_GATE_MSG=('[verify gate] Before finishing: you have open todos and/or edits not followed by a '
  'passing check. Run the relevant tests/checks now, or update your todo list to reflect reality. '
  'Do not claim success while work is pending.')
@@ -275,9 +284,12 @@ class CodingAgent:
         return list(getattr(ctx,'todos',None) or []) if ctx else []
     def _dispatch(self,name,args):
         result=dispatch(self.context,name,args)
-        if name in _EDIT_TOOLS and '"status": "completed"' in result:self._edited_since_check=True
-        elif name=='run_tests' or (name=='run_command' and any(h in str(args.get('command','')) for h in _VERIFY_HINTS)):
-            if '"returncode": 0' in result:self._edited_since_check=False
+        try:payload=json.loads(result) if isinstance(result,str) else None
+        except Exception:payload=None
+        if not isinstance(payload,dict):payload={}
+        if name in _EDIT_TOOLS and payload.get('status')=='completed':self._edited_since_check=True
+        elif name=='run_tests' or (name=='run_command' and _is_check_command(args.get('command',''))):
+            if payload.get('returncode')==0:self._edited_since_check=False
         if name=='write_todos':
             try:
                 payload=json.loads(result)
@@ -298,6 +310,22 @@ class CodingAgent:
             except Exception as exc:
                 last=exc
                 self.events.emit('info',f'request attempt {i+1} failed: {type(exc).__name__}: {str(exc)[:120]}')
+        raise last
+    def _stream_with_retries(self,fn):
+        """Iterate a model stream; a mid-stream failure restarts the whole
+        request with the same backoff policy as _with_retries."""
+        delays=[0.0]+[0.5*(2**i) for i in range(max(0,self.config.request_retries))]
+        last=None
+        for i,d in enumerate(delays):
+            if d:
+                self.events.emit('info',f'retrying in {d:.1f}s (stream attempt {i} failed)')
+                time.sleep(d)
+            try:
+                yield from fn()
+                return
+            except Exception as exc:
+                last=exc
+                self.events.emit('info',f'stream attempt {i+1} failed: {type(exc).__name__}: {str(exc)[:120]}')
         raise last
     def _maybe_auto_compact(self):
         """Compact automatically once per user request when context crosses the threshold."""
@@ -385,24 +413,25 @@ class CodingAgent:
         return self._handle_chat_message(m)
     def _chat_streamed(self,tools):
         """Streaming chat transport: text tokens emit live; tool calls accumulate."""
-        with Timer() as timer:stream=self._with_retries(lambda:self.provider.chat_stream(model=self.config.model,messages=[{'role':'system','content':SYSTEM_PROMPT}]+self._with_context_blocks(self.history),tools=tools,tool_choice='auto'))
-        parts=[];tcalls={};u=None;emitted=False
-        for chunk in stream:
-            cu=getattr(chunk,'usage',None)
-            if cu is not None:u=cu
-            if not getattr(chunk,'choices',None):continue
-            d=chunk.choices[0].delta
-            piece=getattr(d,'content',None) if d else None
-            if piece:
-                parts.append(piece);emitted=True
-                self.events.emit('token','stream',text=piece)
-            for tc in ((getattr(d,'tool_calls',None) or []) if d else []):
-                slot=tcalls.setdefault(tc.index,{'id':'','name':'','args':''})
-                if getattr(tc,'id',None):slot['id']=tc.id
-                fn=getattr(tc,'function',None)
-                if fn is not None:
-                    if getattr(fn,'name',None):slot['name']=fn.name
-                    if getattr(fn,'arguments',None):slot['args']+=fn.arguments
+        with Timer() as timer:
+            stream=self._stream_with_retries(lambda:self.provider.chat_stream(model=self.config.model,messages=[{'role':'system','content':SYSTEM_PROMPT}]+self._with_context_blocks(self.history),tools=tools,tool_choice='auto'))
+            parts=[];tcalls={};u=None;emitted=False
+            for chunk in stream:
+                cu=getattr(chunk,'usage',None)
+                if cu is not None:u=cu
+                if not getattr(chunk,'choices',None):continue
+                d=chunk.choices[0].delta
+                piece=getattr(d,'content',None) if d else None
+                if piece:
+                    parts.append(piece);emitted=True
+                    self.events.emit('token','stream',text=piece)
+                for tc in ((getattr(d,'tool_calls',None) or []) if d else []):
+                    slot=tcalls.setdefault(tc.index,{'id':'','name':'','args':''})
+                    if getattr(tc,'id',None):slot['id']=tc.id
+                    fn=getattr(tc,'function',None)
+                    if fn is not None:
+                        if getattr(fn,'name',None):slot['name']=fn.name
+                        if getattr(fn,'arguments',None):slot['args']+=fn.arguments
         u_norm=extract_usage(u);self.metrics.add(u,timer.elapsed_ms)
         self.session.record('usage',u_norm if u_norm is not None else {'available':False,'advice':USAGE_ADVICE})
         self.streamed_any=emitted

@@ -47,6 +47,60 @@ def test_edit_tool_creates_checkpoint(tmp_path):
     assert (tmp_path / '.git').exists()
 
 
+def test_undo_last_checkpoint_reverts_agent_commit(tmp_path):
+    git = Git(tmp_path)
+    assert git.ensure_repo() is True
+    ws = Workspace(tmp_path)
+    ws.write_file('a.txt', 'v1\n')
+    assert git.snapshot('auto: write_file a.txt') == 'committed'
+    ws.write_file('a.txt', 'v2\n')
+    ws.write_file('b.txt', 'new\n')
+    assert git.snapshot('auto: write_file a.txt') == 'committed'
+    ok, msg = git.undo_last_checkpoint()
+    assert ok is True
+    assert (tmp_path / 'a.txt').read_text() == 'v1\n'
+    assert not (tmp_path / 'b.txt').exists()
+
+
+def test_undo_last_checkpoint_refuses_over_user_commit(tmp_path):
+    git = Git(tmp_path)
+    assert git.ensure_repo() is True
+    ws = Workspace(tmp_path)
+    ws.write_file('a.txt', 'v1\n')
+    assert git.snapshot('auto: write_file a.txt') == 'committed'
+    ws.write_file('a.txt', 'v2\n')
+    assert git.run('add', '-A').returncode == 0
+    assert git.run('commit', '-m', 'user commit').returncode == 0
+    ok, msg = git.undo_last_checkpoint()
+    assert ok is False
+    assert 'refusing' in msg
+    assert (tmp_path / 'a.txt').read_text() == 'v2\n'  # user commit untouched
+
+
+def test_undo_last_checkpoint_refuses_without_agent_commit(tmp_path):
+    git = Git(tmp_path)
+    assert git.ensure_repo() is True
+    ws = Workspace(tmp_path)
+    ws.write_file('a.txt', 'v1\n')
+    assert git.run('add', '-A').returncode == 0
+    assert git.run('commit', '-m', 'user commit').returncode == 0
+    ok, msg = git.undo_last_checkpoint()
+    assert ok is False
+    assert 'no agent checkpoint' in msg
+
+
+def test_undo_last_checkpoint_root_commit_refuses(tmp_path):
+    git = Git(tmp_path)
+    assert git.ensure_repo() is True
+    ws = Workspace(tmp_path)
+    ws.write_file('a.txt', 'v1\n')
+    assert git.snapshot('auto: write_file a.txt') == 'committed'
+    ok, msg = git.undo_last_checkpoint()
+    assert ok is False
+    assert 'first commit' in msg
+    assert (tmp_path / 'a.txt').read_text() == 'v1\n'
+
+
 def test_list_files_hides_git_dir(tmp_path):
     from coding_agent.tools import ToolContext
     c = Config('k', None, 'm', 'auto', tmp_path, 'prompt', 5000, 30000, 10, 10,

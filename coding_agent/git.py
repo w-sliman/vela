@@ -21,6 +21,29 @@ class Git:
         """Revert workspace to the state before the last snapshot."""
         r=self.run('reset','--hard','HEAD~1')
         return r
+    def undo_last_checkpoint(self):
+        """Revert the workspace to the state before the newest agent auto-checkpoint.
+
+        Only commits whose message starts with 'auto: ' (created by post-edit
+        snapshots) are undoable, and only when that checkpoint is the latest
+        commit — user commits are never reverted. Returns (ok, message).
+        """
+        head=self.run('rev-parse','HEAD')
+        if head.returncode!=0:return False,'no commits in repository yet'
+        r=self.run('log','--format=%H %s','-n','100')
+        if r.returncode!=0:return False,f'git log failed: {r.stderr.strip()}'
+        for line in r.stdout.splitlines():
+            h,sep,msg=line.partition(' ')
+            if not sep or not msg.startswith('auto: '):continue
+            if h!=head.stdout.strip():
+                return False,'newest agent checkpoint is not the latest commit; refusing to revert commits on top of it'
+            target=f'{h}~1'
+            if self.run('rev-parse','--verify','-q',target).returncode!=0:
+                return False,f'checkpoint "{msg}" is the first commit in the repository and cannot be undone'
+            rr=self.run('reset','--hard',target)
+            if rr.returncode==0:return True,f'undone: workspace restored to state before "{msg}"'
+            return False,f'undo failed: {rr.stderr.strip()}'
+        return False,'no agent checkpoint to undo (checkpoints are commits starting with "auto: "); user commits are never reverted'
     def status(self):return self.run('status','--short','--branch')
     def diff(self,staged=False):return self.run('diff',*(('--staged',) if staged else ()))
     def checkpoint(self,msg):

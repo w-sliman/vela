@@ -8,7 +8,7 @@ Editing follows **read -> fingerprint -> edit -> verify -> recover**.
 - `replace_text` also accepts a line-range mode (`start_line`/`end_line`, 1-based inclusive) taken from a fresh read, which avoids anchor recall entirely.
 - Unified patches validate context before changing the file; malformed hunk headers return the expected `@@` format and advice to switch to `replace_text`.
 - Tool arguments are validated against each tool's schema (missing arguments produce named errors), and parsed defensively for common transport-level JSON failures.
-- Every successful edit auto-commits a git checkpoint; `/undo` reverts the last one.
+- Every successful edit auto-commits a git checkpoint (commit messages start with `auto: `); `/undo` reverts the last one, but never touches user commits.
 - Large HTML/CSS/JS edits are deliberately bounded; use patches or several smaller writes.
 
 Important limitation: if a local inference server itself rejects malformed tool-call JSON before returning an API response, the client cannot repair the already-rejected call. v1.x therefore catches that failure, switches to the compatible chat path in `auto` mode, and sends a corrective instruction telling the model to re-read and use smaller patches. The model remains responsible for producing the next valid action.

@@ -63,8 +63,32 @@ def test_edit_approval_denied_replace_text(tmp_path):
         called.append((cmd, reason))
         return False # Denied!
     ctx = make_ctx(tmp_path, cb, approval_edits=True)
-    
+
     res = json.loads(dispatch(ctx, 'replace_text', {'path': 'f.txt', 'old': 'original text', 'new': 'replaced text'}))
     assert res['status'] == 'denied'
     assert res['reason'] == 'user declined this edit'
     assert (tmp_path / 'f.txt').read_text() == 'original text' # Unchanged
+
+def test_edit_approval_denied_apply_patch(tmp_path):
+    (tmp_path / 'f.txt').write_text('line1\nline2\nline3\n')
+    called = []
+    def cb(cmd, reason):
+        called.append((cmd, reason))
+        return False
+    ctx = make_ctx(tmp_path, cb, approval_edits=True)
+    patch = '@@ -1,3 +1,3 @@\n line1\n-line2\n+LINE2\n line3\n'
+    res = json.loads(dispatch(ctx, 'apply_patch', {'path': 'f.txt', 'patch': patch}))
+    assert res['status'] == 'denied'
+    assert res['reason'] == 'user declined this edit'
+    assert (tmp_path / 'f.txt').read_text() == 'line1\nline2\nline3\n' # Unchanged
+
+def test_edit_approval_diff_truncated(tmp_path):
+    called = []
+    def cb(cmd, reason):
+        called.append((cmd, reason))
+        return True
+    ctx = make_ctx(tmp_path, cb, approval_edits=True)
+    res = json.loads(dispatch(ctx, 'write_file', {'path': 'big.txt', 'content': 'x' * 3000}))
+    assert res['status'] == 'completed'
+    assert len(called) == 1
+    assert '… [truncated]' in called[0][1]  # large diffs are truncated in the preview

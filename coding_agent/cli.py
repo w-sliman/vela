@@ -42,7 +42,8 @@ def main():
     p=argparse.ArgumentParser(description='Interactive venv-native coding agent');p.add_argument('--workspace');p.add_argument('--plan',action='store_true');a=p.parse_args()
     c=Config.from_env(a.workspace);ws=Workspace(c.workspace,c.max_file_chars);shell=Shell(c);session=Session(c.workspace)
     debug_ui.enabled=c.debug
-    ctx=ToolContext(c,ws,shell,make_approval_callback(c.approval_mode),Git(c.workspace),Browser(c.enable_browser),GitHub(c.enable_github),DockerSandbox(c.workspace,c.enable_sandbox),lambda line: console.print(f'[dim]{line.rstrip()}[/dim]'),Delegator(c, f'Workspace: {c.workspace}'),EventBus(debug_ui.event),on_tool_result=debug_ui.tool_result);show_banner(c)
+    approval=make_approval_callback(c.approval_mode)
+    ctx=ToolContext(c,ws,shell,approval,Git(c.workspace),Browser(c.enable_browser),GitHub(c.enable_github),DockerSandbox(c.workspace,c.enable_sandbox),lambda line: console.print(f'[dim]{line.rstrip()}[/dim]'),Delegator(c, f'Workspace: {c.workspace}'),EventBus(debug_ui.event),on_tool_result=debug_ui.tool_result);show_banner(c)
     if not c.api_key or not c.model: console.print(Panel('Configure OPENAI_API_KEY and OPENAI_MODEL in .env.',title='LLM configuration required',border_style='red'));raise SystemExit(2)
     agent=CodingAgent(c,ctx,session,EventBus(debug_ui.event))
     if a.plan: console.print(Markdown(agent.run('Create an implementation plan for this repository. Do not edit files.').text));return
@@ -54,13 +55,13 @@ def main():
             if text in {'/quit','/exit'}:break
             if text=='/help':
                 t=Table(title='Commands');t.add_column('Command');t.add_column('Meaning')
-                for x in [('/help','commands'),('/pwd','workspace'),('/tree','tree'),('/model','model/endpoint'),('/usage','session token usage'),('/compact [focus]','summarize older conversation turns'),('/undo','revert last agent edit'),('/memory [consolidate]','persistent memory; consolidate merges duplicates'),('/todos','current working todo list'),('/sessions [n]','list recent session traces'),('/resume [id|#]','continue a past session as fresh digest context'),('/continue','resume a paused run (Ctrl+C)'),('/history','session events'),('/clear','clear LLM context'),('/quit','exit')]:t.add_row(*x)
+                for x in [('/help','commands'),('/pwd','workspace'),('/tree','tree'),('/model','model/endpoint'),('/usage','session token usage'),('/compact [focus]','summarize older conversation turns'),('/undo','revert last agent edit checkpoint (auto: commits only)'),('/memory [consolidate]','persistent memory; consolidate merges duplicates'),('/todos','current working todo list'),('/sessions [n]','list recent session traces'),('/resume [id|#]','continue a past session as fresh digest context'),('/continue','resume a paused run (Ctrl+C)'),('/history','session events'),('/clear','clear LLM context'),('/quit','exit')]:t.add_row(*x)
                 console.print(t);continue
             if text=='/pwd':console.print(c.workspace);continue
             if text=='/tree':console.print('\n'.join(ws.list_files()));continue
             if text=='/model':console.print(f'{c.model} @ {c.base_url or "OpenAI default"} ({c.api_mode})');continue
             if text=='/usage':
-                m=agent.metrics;m.price(c.price_input_per_million,c.price_output_per_million)
+                m=agent.metrics;win=c.context_window_tokens;m.price(c.price_input_per_million,c.price_output_per_million)
                 avg=(m.latency_ms/m.calls) if m.calls else 0.0
                 console.print(f'[dim]LLM calls: {m.calls} | tokens in/out/total: {m.input_tokens}/{m.output_tokens}/{m.input_tokens+m.output_tokens} | est. cost: ${m.estimated_cost_usd:.4f} | avg latency: {avg:.0f} ms[/dim]')
                 console.print(f'[dim]context: last prompt {_fmt_tokens(m.last_input_tokens)} of {_fmt_tokens(win)} window ({(m.last_input_tokens/win*100 if win else 0):.0f}%) | window set via CODER_CONTEXT_WINDOW[/dim]' if m.last_input_tokens else f'[dim]context: no usage reported yet (window {win:,}, set via CODER_CONTEXT_WINDOW)[/dim]')
@@ -69,11 +70,11 @@ def main():
             if text=='/undo':
                 if not ctx.git.ensure_repo():
                     console.print('[yellow]no git repository in workspace[/]')
-                elif not approval_callback('git reset --hard HEAD~1','undo restores the workspace to the state before the last agent edit'):
+                elif not approval('git reset --hard <last agent checkpoint>','undo restores the workspace to the state before the last agent edit checkpoint'):
                     console.print('[dim]cancelled.[/dim]')
                 else:
-                    r=ctx.git.undo_last()
-                    console.print('[green]undone: workspace restored to previous checkpoint.[/green]' if r.returncode==0 else f'[red]undo failed: {r.stderr.strip()}[/red]')
+                    ok,msg=ctx.git.undo_last_checkpoint()
+                    console.print(f'[green]{msg}[/green]' if ok else f'[red]{msg}[/red]')
                 continue
             if text=='/memory' or text.startswith('/memory '):
                 from .memory import ProjectMemory;pm=ProjectMemory(c.workspace)

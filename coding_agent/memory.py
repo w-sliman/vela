@@ -1,5 +1,10 @@
 from __future__ import annotations
-import json,math,re,datetime
+import json,math,os,re,datetime
+from contextlib import contextmanager
+try:
+    import fcntl
+except ImportError:
+    fcntl=None
 
 _STOP={'the','a','an','and','or','of','to','in','for','on','is','are','be','was','were','it','its','this','that','these','those','with','as','at','by','from','use','uses','used','using','when','if','not','do','does','did','can','will','should'}
 _TOK=re.compile(r'[a-z0-9_][a-z0-9_.\-/]*')
@@ -98,7 +103,20 @@ class ProjectMemory:
                 ts=str(it.get('timestamp') or it.get('created') or _now_iso())
                 recs.append({'id':f'r{len(recs)+1}','kind':kind,'text':str(it.get('text','')),'tags':[],'paths':[],'created':ts,'last_seen':ts,'hits':0})
         d={'version':2,'records':recs};self._write(d);return d
-    def _write(self,d):self.path.write_text(json.dumps(d,indent=2))
+    def _write(self,d):
+        """Atomic replace so concurrent readers never observe a torn file."""
+        tmp=self.path.with_name(self.path.name+'.tmp')
+        tmp.write_text(json.dumps(d,indent=2))
+        os.replace(tmp,self.path)
+    @contextmanager
+    def _locked(self):
+        """Advisory exclusive lock around read-modify-write cycles; no-op where fcntl is absent."""
+        if fcntl is None:yield;return
+        self.path.parent.mkdir(parents=True,exist_ok=True)
+        with self.path.with_name(self.path.name+'.lock').open('a') as lf:
+            fcntl.flock(lf,fcntl.LOCK_EX)
+            try:yield
+            finally:fcntl.flock(lf,fcntl.LOCK_UN)
     def records(self):return self.load()['records']
     def _next_id(self,recs):
         mx=0
@@ -108,67 +126,72 @@ class ProjectMemory:
         return f'r{mx+1}'
     def add(self,kind,text,tags=None,paths=None):
         """Append a record; exact kind+text duplicates update last_seen instead of piling up."""
-        d=self.load();recs=d['records'];norm=' '.join(str(text).split())
-        for r in recs:
-            if r.get('kind')==kind and ' '.join(str(r.get('text','')).split())==norm:
-                r['last_seen']=_now_iso();self._write(d);return r['id']
-        now=_now_iso();rid=self._next_id(recs)
-        recs.append({'id':rid,'kind':kind,'text':str(text),'tags':[str(t) for t in (tags or [])],'paths':[str(p) for p in (paths or [])],'created':now,'last_seen':now,'hits':0})
-        self._write(d);return rid
+        with self._locked():
+            d=self.load();recs=d['records'];norm=' '.join(str(text).split())
+            for r in recs:
+                if r.get('kind')==kind and ' '.join(str(r.get('text','')).split())==norm:
+                    r['last_seen']=_now_iso();self._write(d);return r['id']
+            now=_now_iso();rid=self._next_id(recs)
+            recs.append({'id':rid,'kind':kind,'text':str(text),'tags':[str(t) for t in (tags or [])],'paths':[str(p) for p in (paths or [])],'created':now,'last_seen':now,'hits':0})
+            self._write(d);return rid
     def forget(self,rid):
         """Remove records whose id starts with the given prefix; returns count removed."""
-        d=self.load();want=str(rid)
-        kept=[r for r in d['records'] if not str(r.get('id','')).startswith(want)]
-        removed=len(d['records'])-len(kept)
-        if removed:d['records']=kept;self._write(d)
-        return removed
+        with self._locked():
+            d=self.load();want=str(rid)
+            kept=[r for r in d['records'] if not str(r.get('id','')).startswith(want)]
+            removed=len(d['records'])-len(kept)
+            if removed:d['records']=kept;self._write(d)
+            return removed
     def touch(self,ids):
         """Bump hits/last_seen for injected records so future ranking self-tunes."""
         if not ids:return
-        d=self.load();want={str(i) for i in ids};now=_now_iso()
-        for r in d['records']:
-            if str(r.get('id')) in want:r['hits']=int(r.get('hits',0))+1;r['last_seen']=now
-        self._write(d)
+        with self._locked():
+            d=self.load();want={str(i) for i in ids};now=_now_iso()
+            for r in d['records']:
+                if str(r.get('id')) in want:r['hits']=int(r.get('hits',0))+1;r['last_seen']=now
+            self._write(d)
     def prune(self,max_records=None,ttl_days=0):
         """Deterministic cleanup: drop records untouched longer than ttl_days (when >0),
         then lowest-hits/oldest-last_seen until within max_records. Returns removed ids."""
-        d=self.load();recs=list(d['records']);removed=[]
-        if ttl_days and recs:
-            try:cutoff=datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(days=float(ttl_days))
-            except ValueError:cutoff=None
-            if cutoff is not None:
-                stale=[r for r in recs if _rtime(r)<cutoff]
-                if stale:
-                    recs=[r for r in recs if r not in stale];removed+=[str(r['id']) for r in stale]
-        if max_records is not None and len(recs)>int(max_records):
-            cap=int(max_records)
-            order=sorted(range(len(recs)),key=lambda i:(int(recs[i].get('hits',0)),str(recs[i].get('last_seen',''))))
-            drop=set(order[:len(recs)-cap])
-            removed+=[str(recs[i]['id']) for i in sorted(drop)]
-            recs=[r for i,r in enumerate(recs) if i not in drop]
-        if removed:d['records']=recs;self._write(d)
-        return removed
+        with self._locked():
+            d=self.load();recs=list(d['records']);removed=[]
+            if ttl_days and recs:
+                try:cutoff=datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(days=float(ttl_days))
+                except ValueError:cutoff=None
+                if cutoff is not None:
+                    stale=[r for r in recs if _rtime(r)<cutoff]
+                    if stale:
+                        recs=[r for r in recs if r not in stale];removed+=[str(r['id']) for r in stale]
+            if max_records is not None and len(recs)>int(max_records):
+                cap=int(max_records)
+                order=sorted(range(len(recs)),key=lambda i:(int(recs[i].get('hits',0)),str(recs[i].get('last_seen',''))))
+                drop=set(order[:len(recs)-cap])
+                removed+=[str(recs[i]['id']) for i in sorted(drop)]
+                recs=[r for i,r in enumerate(recs) if i not in drop]
+            if removed:d['records']=recs;self._write(d)
+            return removed
     def consolidate(self,groups):
         """Apply upstream-proposed merges: primary id keeps identity, text/kind replaced,
         tags/paths unioned when not supplied, hits summed, dates spanned. Singleton and
         unknown-id groups are ignored. Returns (merged_ids, removed_ids)."""
-        d=self.load();recs=d['records'];by={str(r.get('id')):r for r in recs};merged=[];removed=[]
-        for g in groups or []:
-            members=[by[str(i)] for i in (g.get('ids') or []) if str(i) in by]
-            if len(members)<2 or not str(g.get('text') or '').strip():continue
-            prim=members[0]
-            prim['text']=str(g.get('text') or prim.get('text',''))
-            prim['kind']=str(g.get('kind') or prim.get('kind','fact'))
-            prim['tags']=list(dict.fromkeys([str(t) for t in (g.get('tags') if g.get('tags') is not None else sum((m.get('tags',[]) for m in members),[]))]))
-            prim['paths']=list(dict.fromkeys([str(p) for p in (g.get('paths') if g.get('paths') is not None else sum((m.get('paths',[]) for m in members),[]))]))
-            prim['hits']=sum(int(m.get('hits',0)) for m in members)
-            prim['created']=min(str(m.get('created','')) for m in members)
-            prim['last_seen']=max(str(m.get('last_seen','')) for m in members)
-            for m in members[1:]:
-                if m in recs:recs.remove(m);removed.append(str(m['id']))
-            merged.append(str(prim['id']))
-        if merged or removed:self._write(d)
-        return merged,removed
+        with self._locked():
+            d=self.load();recs=d['records'];by={str(r.get('id')):r for r in recs};merged=[];removed=[]
+            for g in groups or []:
+                members=[by[str(i)] for i in (g.get('ids') or []) if str(i) in by]
+                if len(members)<2 or not str(g.get('text') or '').strip():continue
+                prim=members[0]
+                prim['text']=str(g.get('text') or prim.get('text',''))
+                prim['kind']=str(g.get('kind') or prim.get('kind','fact'))
+                prim['tags']=list(dict.fromkeys([str(t) for t in (g.get('tags') if g.get('tags') is not None else sum((m.get('tags',[]) for m in members),[]))]))
+                prim['paths']=list(dict.fromkeys([str(p) for p in (g.get('paths') if g.get('paths') is not None else sum((m.get('paths',[]) for m in members),[]))]))
+                prim['hits']=sum(int(m.get('hits',0)) for m in members)
+                prim['created']=min(str(m.get('created','')) for m in members)
+                prim['last_seen']=max(str(m.get('last_seen','')) for m in members)
+                for m in members[1:]:
+                    if m in recs:recs.remove(m);removed.append(str(m['id']))
+                merged.append(str(prim['id']))
+            if merged or removed:self._write(d)
+            return merged,removed
     def text(self):
         lines=[render_record(r)+f" (hits:{r.get('hits',0)}, seen:{str(r.get('last_seen',''))[:10]})" for r in self.records()[:200]]
         return ('\n'.join(lines)[:12000]) or '(project memory is empty)'

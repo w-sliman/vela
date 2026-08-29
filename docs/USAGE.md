@@ -34,7 +34,7 @@ Review this repository for security and correctness issues. Do not modify files.
 - `/model` — configured model and endpoint
 - `/usage` — session token usage, estimated cost, context fill
 - `/compact [focus]` — summarize older turns into one context message; optionally tell it what to focus on. The summarizer itself chooses how many recent turns to keep verbatim, and may also distill durable decisions into project memory.
-- `/undo` — revert the workspace to the state before the last agent edit (asks for confirmation; backed by automatic per-edit git checkpoints)
+- `/undo` — revert the workspace to the state before the last agent edit checkpoint (commits starting with `auto: `; user commits are never reverted; asks for confirmation per the configured approval mode)
 - `/memory [consolidate [focus]]` — show persistent project memory; `consolidate` asks the model to group duplicate/paraphrased records and merges them deterministically
 - `/todos` — the agent's current working todo list (what it announced, what is done)
 - `/sessions [n]` — list recent session traces for this workspace, newest first

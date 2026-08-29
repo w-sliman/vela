@@ -43,3 +43,23 @@ def test_compound_command_requires_approval(tmp_path: Path):
 def test_simple_readonly_commands_still_allowed(tmp_path: Path):
     for cmd in ("pytest -q", "git status", "ls", "grep foo bar.txt"):
         assert classify_command(cmd, tmp_path).action == "allow"
+
+
+def test_relative_dotdot_requires_approval(tmp_path: Path):
+    for cmd in ("cat ../../etc/passwd", "head -n 5 ../../../etc/shadow", "cd ..", "ls ../", "grep -r x ../../etc"):
+        assert classify_command(cmd, tmp_path).action == "approve"
+
+
+def test_tilde_path_requires_approval(tmp_path: Path):
+    for cmd in ("cat ~/.ssh/id_rsa", "cd ~", "cat ~/secrets.txt"):
+        assert classify_command(cmd, tmp_path).action == "approve"
+
+
+def test_env_var_path_requires_approval(tmp_path: Path):
+    assert classify_command("cat $HOME/.ssh/id_rsa", tmp_path).action == "approve"
+
+
+def test_dotdot_inside_identifier_still_allowed(tmp_path: Path):
+    # '..' as part of a token (not a path component) must not trigger approval.
+    for cmd in ("python -m a..b", "echo 1..2"):
+        assert classify_command(cmd, tmp_path).action == "allow"

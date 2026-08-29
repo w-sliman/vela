@@ -29,8 +29,10 @@ class ContextManager:
     def trim(self,history):
         """Drop whole leading blocks while over budget; never orphan a tool call/output pair."""
         blocks=_blocks(history)
-        def size():return len(json.dumps([x for b in blocks for x in b],default=str))
-        while len(blocks)>2 and size()>self.max_chars:blocks.pop(0)
+        def bsize(b):return len(json.dumps(b,default=str))
+        total=sum(bsize(b) for b in blocks)
+        while len(blocks)>2 and total>self.max_chars:
+            total-=bsize(blocks[0]);blocks.pop(0)
         if self.max_history_items:
             while len(blocks)>1 and sum(len(b) for b in blocks)>self.max_history_items:blocks.pop(0)
         return [x for b in blocks for x in b]

@@ -18,7 +18,9 @@ traceback. Edit tools return structured recovery guidance on failure.
 - **make_directory**
 
 Every successful edit auto-commits a git checkpoint (`CODER_AUTO_CHECKPOINT=0`
-disables); `/undo` reverts the most recent one.
+disables); `/undo` reverts the most recent one. Only agent checkpoints (commit
+messages starting with `auto: `) are undoable, and only when that checkpoint is
+the latest commit — user commits are never reverted.
 
 ## Search
 
