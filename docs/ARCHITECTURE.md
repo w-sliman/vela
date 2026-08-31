@@ -45,7 +45,10 @@ The central design principle is: **the LLM proposes; deterministic Python execut
 - `llm.py`: the controller loop — one `_step()` over whichever transport is active,
   plus request retries with backoff, budget-driven context reduction, `/compact`
   summarization, the verify gate, and interrupt repair.
-- `providers.py`: thin OpenAI-compatible client wrapper (responses / chat / chat_stream), wrapped by the transports above.
+- `providers.py`: thin OpenAI-compatible client wrapper (responses / chat / chat_stream),
+  wrapped by the transports above, plus the shared retry/backoff helper — retrying is a
+  property of talking to a provider, so sub-agents get it too.
+- `net.py`: outbound URL containment for the opt-in network tools.
 - `tools.py`: tool schemas (single source of truth for validation) and deterministic dispatcher; per-edit git checkpoints hook in here.
 - `workspace.py`: path-safe filesystem operations (symlink-resolving containment).
 - `shell.py`: subprocess execution; merged output stream, timeouts, output limits,
@@ -68,6 +71,8 @@ The central design principle is: **the LLM proposes; deterministic Python execut
 - `memory.py`, `events.py`, `ui.py`, `agents.py`, `json_repair.py`, `prompts.py`, `config.py`: persistent memory with lexical retrieval/scoring, event bus, rendering, sub-agent delegation, defensive tool-JSON parsing, system prompt, environment configuration.
 - `browser.py`, `github.py`, `sandbox.py`: opt-in integrations, all disabled unless
   explicitly enabled by environment (`CODER_ENABLE_BROWSER` / `_GITHUB` / `_SANDBOX`).
+  When enabled, the network ones route every target through `net.py` — the URL is
+  chosen by the model, and the model reads untrusted repository content.
 
 ## Tool loop
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
-import json,re,time
+import json,re
 from dataclasses import dataclass
-from .providers import OpenAICompatibleProvider
+from .providers import OpenAICompatibleProvider,backoff_delays,with_retries
 from .prompts import SYSTEM_PROMPT
 from .budget import ContextBudget,payload_chars
 from .window import WindowStore,looks_like_overflow,parse_limit,resolve as resolve_window
@@ -288,19 +288,11 @@ class CodingAgent:
             except Exception:pass
         return result
     def _with_retries(self,fn,delays=None):
-        """Call fn with exponential backoff; re-raises the last error after all attempts."""
-        if delays is None:
-            delays=[0.0]+[0.5*(2**i) for i in range(max(0,self.config.request_retries))]
-        last=None
-        for i,d in enumerate(delays):
-            if d:
-                self.events.emit('info',f'retrying in {d:.1f}s (attempt {i+1} failed)')
-                time.sleep(d)
-            try:return fn()
-            except Exception as exc:
-                last=exc
-                self.events.emit('info',f'request attempt {i+1} failed: {type(exc).__name__}: {str(exc)[:120]}')
-        raise last
+        """Retry a provider call, announcing each wait and failure to the event bus."""
+        return with_retries(fn,delays if delays is not None else backoff_delays(self.config.request_retries),
+                            on_wait=lambda d,i:self.events.emit('info',f'retrying in {d:.1f}s (attempt {i} failed)'),
+                            on_failure=lambda exc,i:self.events.emit(
+                                'info',f'request attempt {i+1} failed: {type(exc).__name__}: {str(exc)[:120]}'))
     def _fit_to_budget(self):
         """Reduce the conversation until the payload we are about to send fits.
 

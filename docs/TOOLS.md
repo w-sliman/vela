@@ -60,8 +60,14 @@ the latest commit — user commits are never reverted.
 - **remember** / **recall_memory** — persistent project memory (`.coder-agent/memory.json`). `remember` accepts optional `tags`/`paths` arrays that sharpen later lexical retrieval; duplicates refresh instead of piling up.
 - **forget_memory** — delete memory records by id prefix (ids visible via `recall_memory` or `/memory`).
 - **write_todos** — replace the agent's working todo list (see below). Deterministic validation: ≤12 items, one imperative line each (≤120 chars), statuses `pending/in_progress/done` (unknown → pending), exact duplicates dropped. Python diffs old-vs-new and journals the change.
-- **delegate_role** — isolated planner/reviewer sub-agent; advisory only, cannot edit files.
-- **browser_fetch** / **browser_open** / **github_get** — disabled until explicitly enabled via environment.
+- **delegate_role** — isolated planner/reviewer sub-agent; advisory only, cannot edit
+  files. Uses the same request backoff as the main loop, and its client is built on
+  first use so a session that never delegates never opens one.
+- **browser_fetch** / **browser_open** / **github_get** — disabled until explicitly
+  enabled via environment. Once enabled, targets are checked deterministically:
+  http/https only, and no loopback, private, link-local or reserved address —
+  judged on resolved addresses and re-checked on every redirect. `github_get` also
+  validates its path, because that call carries a token. See `docs/SECURITY.md`.
 
 ## Todo list semantics
 

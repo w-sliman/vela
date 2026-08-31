@@ -192,6 +192,7 @@ coding_agent/
   events.py ui.py            # event bus, rendering
   agents.py json_repair.py   # sub-agent delegation, defensive tool-JSON parsing
   prompts.py config.py       # system prompt, environment config
+  net.py         # outbound URL containment for the network tools
   browser.py github.py sandbox.py   # opt-in integrations, off by default
 
 tests/   docs/   smoke/   scripts/   workspace/

@@ -16,6 +16,15 @@ Current protections:
   operations, and any command referencing a host-sensitive absolute path
   (`/etc`, `/home`, `/proc`, `/sys`, `/dev`, `/tmp`, `/mnt`, … or bare `/`)
 - `sandbox_run` commands are subject to the same policy/approval layer as `run_command`
+- the opt-in network tools (`browser_fetch`, `browser_open`, `github_get`) refuse
+  loopback, private, link-local, reserved and multicast targets. Hostnames are judged
+  on their *resolved* addresses, so a public name with a private DNS record is still
+  refused, and every redirect hop is re-checked rather than followed blindly. This is
+  containment against a hostile repository talking the model into fetching cloud
+  metadata or a service on your machine — not a general boundary.
+  `CODER_ALLOW_PRIVATE_URLS=1` lifts it deliberately
+- `github_get` validates the API path before appending it to the fixed base, since
+  that request carries `GITHUB_TOKEN` and a re-targeted host would leak it
 - subprocess environments have secret-shaped variables (API keys, tokens, secrets, passwords) removed
 - command output is bounded, and file reads are bounded by `CODER_MAX_FILE_CHARS`.
   A partially-read file cannot be written back as a whole-file rewrite: the write

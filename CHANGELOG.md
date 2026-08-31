@@ -5,6 +5,30 @@ version headings below record development history rather than shipped releases.
 
 ## Unreleased
 
+### Sub-agent retries and outbound URL containment
+- **`delegate_role` was the one model call without the retry policy.** It called the
+  provider directly, so a transient blip failed the delegation outright. Backoff moved
+  out of `CodingAgent` into `providers.with_retries` — retrying is a property of
+  talking to a provider, not of the agent — and both call sites now use it. The
+  sub-agent's client is also built on first use, so a session that never delegates
+  never opens one.
+- **The opt-in network tools had no target restrictions.** Once enabled,
+  `browser_fetch`/`browser_open` would reach `169.254.169.254` (cloud metadata) or
+  anything on loopback and the LAN. The URL is chosen by the model, and the model reads
+  untrusted repository content — the documented prompt-injection exposure — so the
+  check belongs in deterministic Python. New `net.py` refuses non-http(s) schemes and
+  loopback/private/link-local/reserved/multicast targets, judging *resolved* addresses
+  so a public hostname with a private DNS record is still caught, unwrapping
+  IPv4-mapped IPv6, and re-checking every redirect hop (`follow_redirects=True`
+  previously validated only the URL the model supplied).
+- **`github_get` could be re-targeted by its path.** `'https://api.github.com'+path`
+  with `//evil.com/x` moves the host — and that request attaches `GITHUB_TOKEN`, so it
+  leaks a credential. Paths are now validated before they are appended.
+- `CODER_ALLOW_PRIVATE_URLS=1` lifts the restriction for deliberate local use.
+- 44 new tests, again weighted toward the negative cases: DNS rebinding, IPv4-mapped
+  loopback, redirect-onto-metadata, token-leaking API paths, and no request being made
+  at all for a blocked URL.
+
 ### The context window is learned, not assumed
 - **`CODER_CONTEXT_WINDOW=128000` was an unsafe default.** Point the agent at a 32k
   model and the budget believed it had 128k, so it never reduced and the request was

@@ -22,6 +22,7 @@ class Config:
     show_todos:bool=True
     verify_gate:bool=False
     approval_edits:bool=False
+    allow_private_urls:bool=False
     @classmethod
     def from_env(cls, workspace_arg=None):
         load_dotenv()
@@ -46,4 +47,4 @@ class Config:
           int(os.getenv('CODER_RESUME_MAX_CHARS','6000')),
           int(os.getenv('CODER_MEMORY_MAX_RECORDS','200')),int(os.getenv('CODER_MEMORY_TTL_DAYS','0')),
           os.getenv('CODER_TODOS','1')!='0',os.getenv('CODER_VERIFY_GATE','0')!='0',
-          os.getenv('CODER_APPROVAL_EDITS','0')!='0')
+          os.getenv('CODER_APPROVAL_EDITS','0')!='0',b('CODER_ALLOW_PRIVATE_URLS'))
