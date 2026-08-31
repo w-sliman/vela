@@ -175,7 +175,7 @@ coding_agent/
   llm.py         # controller loop, compaction, retries, verify gate, pause
   conversation.py# canonical, provider-neutral conversation items
   transports.py  # the only place a provider wire format exists
-  providers.py   # OpenAI-compatible client wrapper
+  providers.py   # OpenAI-compatible client wrapper + shared retry/backoff
   tools.py       # tool schemas (single source of truth) + dispatcher
   workspace.py   # path-safe, size-bounded file access
   shell.py       # subprocess execution, timeouts, secret-scrubbed env
