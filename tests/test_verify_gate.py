@@ -1,7 +1,6 @@
 import json
 from types import SimpleNamespace as NS
 
-import pytest
 
 from coding_agent.config import Config
 from coding_agent.llm import VERIFY_GATE_MSG, CodingAgent
@@ -86,7 +85,8 @@ def test_gate_intercepts_unverified_edits_without_todos(tmp_path):
     assert res_text(agent) == 'now actually checked'
 
 def res_text(agent):
-    return agent.history[-1]['role'] == 'assistant' and agent.history[-1]['content']
+    from coding_agent.conversation import AssistantMsg
+    return isinstance(agent.history[-1], AssistantMsg) and agent.history[-1].text
 
 
 def test_clean_state_never_triggers_gate(tmp_path):

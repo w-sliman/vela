@@ -1,7 +1,7 @@
-import json
 from types import SimpleNamespace as NS
 
 from coding_agent.config import Config
+from coding_agent.conversation import AssistantMsg
 from coding_agent.llm import CodingAgent
 from coding_agent.session import Session
 
@@ -48,7 +48,7 @@ def test_text_streaming_emits_tokens_and_returns_full_text(tmp_path):
     streamed = ''.join(d.get('text', '') for k, d in events if k == 'token' and 'text' in d)
     assert streamed == 'Hello'
     assert any(k == 'usage' and d.get('total') == 7 for k, d in events)
-    assert agent.history[-1]['content'] == 'Hello'        # history intact for next call
+    assert agent.history[-1].text == 'Hello'              # history intact for next call
 
 
 def test_tool_call_fragments_assemble_and_dispatch(tmp_path):
@@ -68,8 +68,9 @@ def test_tool_call_fragments_assemble_and_dispatch(tmp_path):
         llm_mod.dispatch = orig
     assert result.text == '(no textual response)'
     assert calls_seen == [('read_file', {'path': 'x.py'})]
-    assistant = [m for m in agent.history if m.get('role') == 'assistant']
-    assert assistant and assistant[0]['tool_calls'][0]['id'] == 'c1'
+    assistant = [m for m in agent.history if isinstance(m, AssistantMsg) and m.tool_calls]
+    assert assistant and assistant[0].tool_calls[0].id == 'c1'
+    assert assistant[0].tool_calls[0].name == 'read_file'
 
 
 def test_stream_disabled_uses_buffered_path(tmp_path):

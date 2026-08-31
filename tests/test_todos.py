@@ -119,7 +119,6 @@ def test_todo_queue_injected_after_memory_block(tmp_path):
     agent.run('fix the failing tests please')
     msgs = p.calls[0]['messages']
     contents = [str(m.get('content')) for m in msgs]
-    mem_i = next(i for i, c in enumerate(contents) if '[project memory]' in c)
     todo_i = next(i for i, c in enumerate(contents) if '[current todos]' in c)
     assert todo_i == len(msgs) - 1                          # todos block sits last
     assert '[>] fix bug' in contents[todo_i] and '[ ] run tests' in contents[todo_i]

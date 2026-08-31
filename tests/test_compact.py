@@ -4,7 +4,9 @@ from types import SimpleNamespace as NS
 import pytest
 
 from coding_agent.config import Config
-from coding_agent.llm import CodingAgent, _turns
+from coding_agent.llm import CodingAgent
+from coding_agent.context import _orphaned
+from coding_agent.conversation import AssistantMsg, ToolCall, ToolResult, UserMsg
 from coding_agent.session import Session
 
 
@@ -14,13 +16,12 @@ def cfg(tmp_path):
 
 
 def hist(n=4):
-    """n complete user-turns, each with an assistant tool_call + tool reply pair."""
+    """n complete user-turns, each with an assistant tool call + its result."""
     h = []
     for i in range(n):
-        h.append({'role': 'user', 'content': f'problem {i}'})
-        h.append({'role': 'assistant', 'content': '',
-                  'tool_calls': [{'id': f'c{i}', 'function': {'name': 'read_file'}}]})
-        h.append({'role': 'tool', 'tool_call_id': f'c{i}', 'content': f'result {i}'})
+        h.append(UserMsg(text=f'problem {i}'))
+        h.append(AssistantMsg(tool_calls=[ToolCall(id=f'c{i}', name='read_file', arguments='{}')]))
+        h.append(ToolResult(call_id=f'c{i}', output=f'result {i}'))
     return h
 
 
@@ -52,11 +53,11 @@ def test_compact_prepends_summary_and_keeps_last_turn_verbatim(tmp_path):
     info = agent.compact()
     assert info['compacted'] and info['turns_removed'] == 3 and info['turns_kept'] == 1
     h = agent.history
-    assert h[0]['role'] == 'user' and h[0]['content'].startswith('[Conversation summary]')
-    assert 'did stuff' in h[0]['content']
-    # last turn intact: user + assistant(tool_call) + tool reply
-    assert [m['role'] for m in h[1:]] == ['user', 'assistant', 'tool']
-    assert h[1]['content'] == 'problem 3'
+    assert isinstance(h[0], UserMsg) and h[0].text.startswith('[Conversation summary]')
+    assert 'did stuff' in h[0].text
+    # last turn intact: user + assistant(tool call) + result
+    assert [type(m).__name__ for m in h[1:]] == ['UserMsg', 'AssistantMsg', 'ToolResult']
+    assert h[1].text == 'problem 3'
     assert not _orphaned(h)
 
 
@@ -66,7 +67,7 @@ def test_focus_goes_to_prompt_and_summary_header(tmp_path):
     agent.compact(focus='the migration plan')
     sent = p.calls[0]['messages'][1]['content']
     assert 'Focus for this compaction: the migration plan' in sent
-    assert 'focus: the migration plan' in agent.history[0]['content']
+    assert 'focus: the migration plan' in agent.history[0].text
 
 
 def test_keep_is_clamped_to_sane_range(tmp_path):
@@ -82,7 +83,7 @@ def test_non_json_prose_still_works_as_summary(tmp_path):
     agent = agent_with(tmp_path, p)
     info = agent.compact()
     assert info['compacted'] and info['turns_kept'] == 2   # DEFAULT_KEEP_TURNS
-    assert 'fixed the parser' in agent.history[0]['content']
+    assert 'fixed the parser' in agent.history[0].text
 
 
 def test_transport_failure_leaves_history_untouched(tmp_path):
@@ -112,12 +113,3 @@ def test_usage_and_compact_events_journaled(tmp_path):
     assert 'usage' in kinds and 'compact' in kinds
 
 
-def _orphaned(history):
-    seen = set()
-    for m in history:
-        if m.get('role') == 'assistant' and m.get('tool_calls'):
-            seen.update(c['id'] for c in m['tool_calls'])
-        elif m.get('role') == 'tool':
-            if m.get('tool_call_id') not in seen:
-                return True
-    return False

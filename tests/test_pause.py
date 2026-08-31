@@ -1,10 +1,10 @@
 import json
-from types import SimpleNamespace as NS
 
 import pytest
 
 from coding_agent.config import Config
 from coding_agent.llm import CodingAgent, PauseInterrupt
+from coding_agent.conversation import INTERRUPTED, AssistantMsg, ToolCall, ToolResult, UserMsg
 from coding_agent.session import Session
 
 from tests.test_verify_gate import Scripted, tool_call
@@ -31,34 +31,39 @@ def kinds(session):
     return [json.loads(l)['kind'] for l in session.path.read_text().splitlines()]
 
 
-def test_repair_appends_outputs_for_dangling_chat_pairs(tmp_path):
+def test_repair_closes_only_the_unanswered_calls(tmp_path):
+    """One assistant turn, two calls, one already answered: only the other is closed.
+
+    Before history became transport-neutral this needed a test per wire format.
+    """
     agent = fresh(tmp_path)
     agent.history = [
-        {'role': 'user', 'content': 'go'},
-        {'role': 'assistant', 'content': '',
-         'tool_calls': [{'id': 'a1', 'type': 'function', 'function': {'name': 'x', 'arguments': '{}'}},
-                        {'id': 'a2', 'type': 'function', 'function': {'name': 'y', 'arguments': '{}'}}]},
-        {'role': 'tool', 'tool_call_id': 'a2', 'content': '{"ok":true}'},
+        UserMsg(text='go'),
+        AssistantMsg(tool_calls=[ToolCall(id='a1', name='x', arguments='{}'),
+                                 ToolCall(id='a2', name='y', arguments='{}')]),
+        ToolResult(call_id='a2', output='{"ok":true}'),
     ]
-    added = agent._repair_partial_turn()
-    assert added == 1
-    assert agent.history[-1] == {'role': 'tool', 'tool_call_id': 'a1', 'content': '[interrupted by user]'}
-
-
-def test_repair_handles_responses_function_call_objects(tmp_path):
-    fc = NS(type='function_call', call_id='k9', name='read_file')
-    agent = fresh(tmp_path)
-    agent.history = [{'role': 'user', 'content': 'go'}, fc]
     assert agent._repair_partial_turn() == 1
-    assert agent.history[-1] == {'type': 'function_call_output', 'call_id': 'k9', 'output': '[interrupted by user]'}
+    assert agent.history[-1] == ToolResult(call_id='a1', output=INTERRUPTED, name='x')
+
+
+def test_repair_closes_every_call_when_none_were_answered(tmp_path):
+    agent = fresh(tmp_path)
+    agent.history = [
+        UserMsg(text='go'),
+        AssistantMsg(tool_calls=[ToolCall(id='k1', name='read_file', arguments='{}'),
+                                 ToolCall(id='k2', name='read_file', arguments='{}')]),
+    ]
+    assert agent._repair_partial_turn() == 2
+    assert [r.call_id for r in agent.history[-2:]] == ['k1', 'k2']
 
 
 def test_repair_noop_on_complete_history(tmp_path):
     agent = fresh(tmp_path)
     agent.history = [
-        {'role': 'assistant', 'content': '', 'tool_calls': [{'id': 'z', 'type': 'function', 'function': {}}]},
-        {'role': 'tool', 'tool_call_id': 'z', 'content': 'done'},
-        {'role': 'assistant', 'content': 'all good'},
+        AssistantMsg(tool_calls=[ToolCall(id='z', name='n', arguments='{}')]),
+        ToolResult(call_id='z', output='done'),
+        AssistantMsg(text='all good'),
     ]
     assert agent._repair_partial_turn() == 0
     assert len(agent.history) == 3
@@ -75,9 +80,8 @@ def test_keyboard_interrupt_becomes_pause_and_repairs(tmp_path):
     a._dispatch = boom
     with pytest.raises(PauseInterrupt):
         a.run('start something')
-    roles = [h['role'] for h in a.history if isinstance(h, dict)]
-    assert roles[-1] == 'tool'                       # dangling pair closed
-    assert a.history[-1]['content'] == '[interrupted by user]'
+    assert isinstance(a.history[-1], ToolResult)     # dangling pair closed
+    assert a.history[-1].output == INTERRUPTED
     assert 'paused' in kinds(a.session)
     assert len(p.calls) == 1                         # died inside first batch
 
@@ -89,7 +93,7 @@ def test_resume_reenters_loop_with_nudge(tmp_path):
     p.queued.append('continued answer')              # provider for resume call
     r = a.resume()
     assert r.text == 'continued answer'
-    assert any(h.get('role') == 'user' and str(h.get('content')).startswith('[paused]')
+    assert any(isinstance(h, UserMsg) and h.text.startswith('[paused]')
                for h in a.history[n_before:])
 
 

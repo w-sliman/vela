@@ -59,7 +59,9 @@ def main():
                 console.print(t);continue
             if text=='/pwd':console.print(c.workspace);continue
             if text=='/tree':console.print('\n'.join(ws.list_files()));continue
-            if text=='/model':console.print(f'{c.model} @ {c.base_url or "OpenAI default"} ({c.api_mode})');continue
+            if text=='/model':
+                extra='' if agent.mode==c.api_mode else f', now {agent.mode}'
+                console.print(f'{c.model} @ {c.base_url or "OpenAI default"} ({c.api_mode}{extra})');continue
             if text=='/usage':
                 m=agent.metrics;win=c.context_window_tokens;m.price(c.price_input_per_million,c.price_output_per_million)
                 avg=(m.latency_ms/m.calls) if m.calls else 0.0

@@ -1,5 +1,4 @@
 import json
-import pytest
 from coding_agent.config import Config
 from coding_agent.tools import ToolContext, dispatch
 from coding_agent.workspace import Workspace

@@ -37,8 +37,15 @@ The central design principle is: **the LLM proposes; deterministic Python execut
 ## Components
 
 - `cli.py`: terminal REPL, slash commands, approval prompts (honors `CODER_APPROVAL_MODE`), live token/context HUD.
-- `llm.py`: tool-calling loop over two transports — Responses API and Chat Completions, the latter with live token streaming. Includes request retries with backoff, auto-compact at a context threshold, `/compact` summarization, and transport fallback.
-- `providers.py`: thin OpenAI-compatible client wrapper (responses / chat / chat_stream).
+- `conversation.py`: the canonical, provider-neutral conversation items
+  (`UserMsg`, `AssistantMsg`, `ToolResult`). History holds only these.
+- `transports.py`: the **only** place a provider wire format exists. Each transport
+  encodes canonical items into a request and decodes the reply back into canonical
+  items: `ResponsesTransport`, `ChatTransport`, `StreamingChatTransport`.
+- `llm.py`: the controller loop — one `_step()` over whichever transport is active,
+  plus request retries with backoff, auto-compact at a context threshold, `/compact`
+  summarization, the verify gate, and interrupt repair.
+- `providers.py`: thin OpenAI-compatible client wrapper (responses / chat / chat_stream), wrapped by the transports above.
 - `tools.py`: tool schemas (single source of truth for validation) and deterministic dispatcher; per-edit git checkpoints hook in here.
 - `workspace.py`: path-safe filesystem operations (symlink-resolving containment).
 - `shell.py`: subprocess execution; merged output stream, timeouts, output limits,
@@ -50,7 +57,7 @@ The central design principle is: **the LLM proposes; deterministic Python execut
   lexical; *path* containment is enforced separately by `ensure_within`.
 - `editor.py`: unified-diff application, exact/fuzzy/line-range replacement, closest-match error hints.
 - `search.py`: regex text search plus AST-based Python symbol index.
-- `context.py`: pair-aware history blocks and trimming (tool-call pairs never split).
+- `context.py`: pair-aware history blocks and trimming (tool-call pairs never split) — one pairing rule, since history is transport-neutral.
 - `telemetry.py`: exact usage extraction from both API naming conventions, metrics, timers.
 - `session.py`: UTC-stamped JSONL session traces (user/tool_call/tool_result/usage/error/compact/assistant events).
 - `git.py`: repo bootstrap, per-edit snapshots, undo, status/diff/checkpoint.
@@ -72,6 +79,27 @@ The central design principle is: **the LLM proposes; deterministic Python execut
 7. Final text is shown to the user.
 
 The model has no direct filesystem or subprocess primitive outside these tools.
+
+## Transports and the canonical conversation
+
+The agent's history holds provider-neutral items. Wire formats — the Responses API's
+`function_call` / `function_call_output` items, Chat Completions' `tool_calls` and
+`role='tool'` messages — exist only inside `transports.py`, at the moment a request is
+encoded or a reply decoded.
+
+That boundary buys three things:
+
+- **Transport failure costs a retry, not the conversation.** `api_mode='auto'` holds an
+  ordered chain (`responses` → `chat`); when one fails the next re-encodes the *same*
+  history. Local OpenAI-compatible servers that reject a malformed tool call before
+  returning a response are the case this exists for. Earlier versions had to discard
+  the conversation to switch, because the stored items were in the wrong format.
+- **One code path instead of two.** Trimming, compaction, interrupt repair and path
+  harvesting each read canonical items, so none of them branches on wire format.
+- **A downgrade is scoped to a conversation.** `/clear` restores the configured
+  preference; `/model` reports the transport actually in use.
+
+Every fallback is journaled as a `transport_fallback` event and announced in the REPL.
 
 ## Advisory context blocks
 

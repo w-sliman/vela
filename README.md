@@ -9,8 +9,9 @@ operation, and returns a structured result — including structured *recovery gu
 when the operation fails. Safety and correctness properties come from the Python
 layer, so they hold regardless of which model you point at it.
 
-That constraint shapes everything else here: history trimming that can never orphan a
-tool-call pair, edits that fail closed on a stale hash rather than half-applying, a
+That constraint shapes everything else here: a conversation model that belongs to no
+provider, so a failing transport costs a retry instead of your context; history
+trimming that can never orphan a tool-call pair; edits that fail closed on a stale hash rather than half-applying, a
 `/resume` that rebuilds task state as a digest instead of replaying tool calls, and
 token telemetry that reports "unknown" rather than guessing.
 
@@ -147,8 +148,10 @@ and selected with `OPENAI_API_MODE`:
 
 In `auto` mode the agent starts on Responses and falls back to Chat if the transport
 rejects a request — the failure mode local inference servers hit when a model emits
-malformed tool-call JSON. No model name is hard-coded; set `OPENAI_MODEL` to whatever
-your account or server offers.
+malformed tool-call JSON. The fallback is lossless: conversation history is stored as
+provider-neutral items, so switching transport re-encodes the same conversation rather
+than discarding it. No model name is hard-coded; set `OPENAI_MODEL` to whatever your
+account or server offers.
 
 The agent loops over model responses and tool calls until it gets a final response.
 Tool results — including failures, with recovery hints — are fed back so the model can
@@ -159,7 +162,9 @@ inspect, change, test, and iterate.
 ```text
 coding_agent/
   cli.py         # Rich REPL, slash commands, approval prompts
-  llm.py         # tool-calling loop, compaction, retries, verify gate, pause
+  llm.py         # controller loop, compaction, retries, verify gate, pause
+  conversation.py# canonical, provider-neutral conversation items
+  transports.py  # the only place a provider wire format exists
   providers.py   # OpenAI-compatible client wrapper
   tools.py       # tool schemas (single source of truth) + dispatcher
   workspace.py   # path-safe, size-bounded file access

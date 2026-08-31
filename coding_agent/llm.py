@@ -1,7 +1,6 @@
 from __future__ import annotations
 import json,re,time
 from dataclasses import dataclass
-from types import SimpleNamespace
 from .providers import OpenAICompatibleProvider
 from .prompts import SYSTEM_PROMPT
 from .context import ContextManager
@@ -10,6 +9,8 @@ from .tools import dispatch,tool_schemas
 from .json_repair import parse_tool_arguments
 from .events import EventBus
 from .memory import ProjectMemory,select_records,render_record
+from .conversation import AssistantMsg,ToolResult,UserMsg,INTERRUPTED,answered_ids,is_call,item_text,tool_arguments
+from . import transports
 
 COMPACT_SYSTEM=('You compress coding-agent conversation transcripts. Respond with ONLY a JSON object: '
  '{"summary":"...","keep_last_turns":<int 1-5>,"memories":[{"kind":"...","text":"..."}]}. The summary must preserve: current task state, files '
@@ -34,6 +35,9 @@ def _is_check_command(command):
     """
     s=_QUOTED_ARG_RE.sub(' ',str(command))
     return any(re.search(r'\b'+h+r'\b',s) for h in _VERIFY_HINTS)
+TRANSPORT_RETRY_MSG=('The previous model request failed at the tool-call transport layer. '
+ 'Do not emit large inline file contents. Re-read the target file and use small '
+ 'apply_patch/replace_text operations with valid JSON.')
 VERIFY_GATE_MSG=('[verify gate] Before finishing: you have open todos and/or edits not followed by a '
  'passing check. Run the relevant tests/checks now, or update your todo list to reflect reality. '
  'Do not claim success while work is pending.')
@@ -47,37 +51,16 @@ def _turns(history):
     """Group history into user-turns: one user message plus everything until the next."""
     turns=[];cur=None
     for h in history:
-        if isinstance(h,dict) and h.get('role')=='user':
+        if isinstance(h,UserMsg):
             cur=[h];turns.append(cur)
         elif cur is None:
             cur=[h];turns.append(cur)
         else:cur.append(h)
     return turns
 
-def _item_text(h):
-    if isinstance(h,dict):
-        role=h.get('role') or h.get('type') or '?'
-        c=h.get('content')
-        if h.get('tool_calls'):
-            names=' '.join((tc.get('function') or {}).get('name','') for tc in h['tool_calls'])
-            c=f'{c or ""} [tools: {names}]'
-        if h.get('type')=='function_call_output':c=f"call {h.get('call_id')}: {str(h.get('output',''))[:200]}"
-    else:
-        role=getattr(h,'type',None) or getattr(h,'role','?')
-        c=getattr(h,'content',None) or getattr(h,'output_text','') or ''
-        if role=='function_call_output':c=f"call {getattr(h,'call_id','')}: {str(getattr(h,'output',''))[:200]}"
-    s=str(c).replace('\n',' ')
-    return f'{role}: {s[:400]}'
 @dataclass(frozen=True)
 class AgentResult:
     text:str; tool_calls:int; metrics:dict; streamed:bool=False
-
-def safe_json(raw):
-    try:
-        v=json.loads(raw or '{}')
-        return (v,None) if isinstance(v,dict) else (None,'tool arguments must be a JSON object')
-    except json.JSONDecodeError as e:
-        return None,f'malformed tool JSON: {e}'
 
 _RE_PATH_ARG=re.compile(r'"path"\s*:\s*"([^"\n]+)"');_RE_PATHS_ARR=re.compile(r'"paths"\s*:\s*\[([^\]]*)\]')
 def _clean_memories(raw):
@@ -106,14 +89,9 @@ def _clean_groups(raw,valid_ids):
                         'paths':[str(p)[:200] for p in (g.get('paths') or [])][:8]})
     return out
 def _recent_paths(history,limit=16):
-    """Workspace paths touched by recent tool calls, harvested from recorded tool arguments."""
+    """Workspace paths touched by recent tool calls, harvested from tool arguments."""
     out=[]
-    for h in history[-limit:]:
-        blob=''
-        if isinstance(h,dict):
-            for tc in h.get('tool_calls') or []:blob+=(tc.get('function') or {}).get('arguments') or ''
-            blob+='\n'+str(h.get('arguments') or '')
-        elif getattr(h,'type',None)=='function_call':blob=str(getattr(h,'arguments','') or '')
+    for blob in tool_arguments(history[-limit:]):
         out.extend(m.group(1) for m in _RE_PATH_ARG.finditer(blob))
         for m in _RE_PATHS_ARR.finditer(blob):out+=re.findall(r'"([^"\n]+)"',m.group(1))
     return list(dict.fromkeys(out))
@@ -148,38 +126,48 @@ class CodingAgent:
     def __init__(self,config,context,session,events=None):
         if not config.api_key: raise RuntimeError('OPENAI_API_KEY is not configured. Add it to .env.')
         if not config.model: raise RuntimeError('OPENAI_MODEL is not configured. Add it to .env.')
+        self.config=config;self.context=context;self.session=session;self.events=events or EventBus()
+        self.history=[];self.metrics=Metrics()
+        self.ctx=ContextManager(config.max_context_chars,config.max_history_items)
+        self._auto_compact_attempted=False;self.memory=MemoryInjector(config,session)
+        self._turn_memory=None;self._gate_nudged=False;self._edited_since_check=False
         self.provider=OpenAICompatibleProvider(config.api_key,config.base_url)
-        self.config=config;self.context=context;self.session=session;self.events=events or EventBus();self.history=[];self.mode=config.api_mode;self.metrics=Metrics();self.ctx=ContextManager(config.max_context_chars,config.max_history_items);self._auto_compact_attempted=False;self.memory=MemoryInjector(config,session);self._turn_memory=None;self._gate_nudged=False;self._edited_since_check=False
+    @property
+    def provider(self):return self._provider
+    @provider.setter
+    def provider(self,value):
+        """Swapping the API client rebuilds the transports bound to it, so the
+        preferred transport is restored along with the client."""
+        self._provider=value
+        self._transports=transports.build(self.config.api_mode,value,self.config.model,SYSTEM_PROMPT,
+                                          stream=getattr(self.config,'stream_chat',True))
+        self.transport=self._transports[0]
+    @property
+    def mode(self):
+        """Name of the transport actually in use — what /model should report."""
+        return self.transport.name
     def _repair_partial_turn(self):
         """Close dangling tool-call pairs after an interrupt, so the next request
         stays valid. Only the trailing block is examined. Returns outputs added."""
-        h=self.history;idx=None
-        for i in range(len(h)-1,-1,-1):
-            it=h[i]
-            if isinstance(it,dict) and it.get('role')=='assistant' and it.get('tool_calls'):idx=i;break
-            if not isinstance(it,dict) and getattr(it,'type',None)=='function_call':idx=i;break
+        h=self.history
+        idx=next((i for i in range(len(h)-1,-1,-1) if is_call(h[i])),None)
         if idx is None:return 0
-        block=h[idx:]
-        if isinstance(block[0],dict):
-            ids=[str(c.get('id')) for c in block[0].get('tool_calls') or []]
-            answered={str(o.get('tool_call_id')) for o in block[1:] if isinstance(o,dict)}
-            add=lambda tid:self.history.append({'role':'tool','tool_call_id':tid,'content':'[interrupted by user]'})
-        else:
-            ids=[str(getattr(block[0],'call_id',getattr(block[0],'id','')))]
-            answered={str(o.get('call_id')) for o in block[1:] if isinstance(o,dict)}
-            add=lambda tid:self.history.append({'type':'function_call_output','call_id':tid,'output':'[interrupted by user]'})
-        added=0
-        for tid in ids:
-            if tid and tid not in answered:add(tid);added+=1
+        answered=answered_ids(h[idx+1:]);added=0
+        for call in h[idx].tool_calls:
+            if call.id and call.id not in answered:
+                h.append(ToolResult(call_id=call.id,output=INTERRUPTED,name=call.name));added+=1
         return added
     def resume(self,instruction=None):
         """Continue a paused run: re-enter the loop with a synthetic nudge."""
         if not self.history:raise RuntimeError('nothing to continue — context is empty')
         return self.run(instruction or '[paused] Continue where you left off; finish your remaining todos.')
-    def clear(self): self.history=[];self._turn_memory=None
+    def clear(self):
+        """Reset the conversation. A transport downgrade is scoped to a conversation,
+        not to the process, so clearing restores the configured preference."""
+        self.history=[];self._turn_memory=None;self.transport=self._transports[0]
     def start_resumed(self,digest_text,source_id):
         """Replace context with a resumed-session digest as the opening context message."""
-        self.clear();self.history=[{'role':'user','content':digest_text}]
+        self.clear();self.history=[UserMsg(text=digest_text)]
         self.session.record('resumed_from',{'session':source_id,'chars':len(digest_text)})
     def compact(self,focus=None):
         """Summarize older turns into one context message; recent turns kept verbatim.
@@ -206,7 +194,7 @@ class CodingAgent:
             except (TypeError,ValueError):keep=DEFAULT_KEEP_TURNS
         keep=max(1,min(KEEP_MAX,keep));keep=min(keep,len(turns)-1)
         header='[Conversation summary]'+(f' — focus: {focus}' if focus else '')
-        new_history=[{'role':'user','content':f'{header}\n{summary}'}]
+        new_history=[UserMsg(text=f'{header}\n{summary}')]
         for t in turns[-keep:]:new_history.extend(t)
         before=len(self.history);self.history=new_history
         saved=self._persist_distilled(_clean_memories(value.get('memories') if isinstance(value,dict) else None))
@@ -256,21 +244,17 @@ class CodingAgent:
         lines=[]
         for ti,t in enumerate(turns,1):
             lines.append(f'--- turn {ti} ---')
-            for h in t:lines.append(_item_text(h))
+            for h in t:lines.append(item_text(h))
         blob='\n'.join(lines)
         if len(blob)>max_chars:blob=blob[-max_chars:]
         focus_line=f'Focus for this compaction: {focus}\n' if focus else ''
         return (f'{focus_line}Transcript (oldest first):\n{blob}\n\n'
                 'Return ONLY JSON: {"summary": "...", "keep_last_turns": <int 1-5>, "memories": [{"kind": "...", "text": "..."}]}')
     def _trim(self): self.history=self.ctx.trim(self.history)
-    def _with_context_blocks(self,items):
-        """Advisory blocks appended to outgoing payloads (never persisted to history):
+    def _advisory_blocks(self):
+        """Blocks attached to the outgoing payload but never persisted into history:
         this turn's memory recall and the current todo queue."""
-        extra=[]
-        if self._turn_memory:extra.append({'role':'user','content':self._turn_memory})
-        tb=self._todos_block()
-        if tb:extra.append({'role':'user','content':tb})
-        return items+extra
+        return [b for b in (self._turn_memory,self._todos_block()) if b]
     _TODO_ICON={'done':'x','in_progress':'>','pending':' '}
     def _todos_block(self):
         if not getattr(self.config,'show_todos',True):return None
@@ -312,22 +296,6 @@ class CodingAgent:
                 last=exc
                 self.events.emit('info',f'request attempt {i+1} failed: {type(exc).__name__}: {str(exc)[:120]}')
         raise last
-    def _stream_with_retries(self,fn):
-        """Iterate a model stream; a mid-stream failure restarts the whole
-        request with the same backoff policy as _with_retries."""
-        delays=[0.0]+[0.5*(2**i) for i in range(max(0,self.config.request_retries))]
-        last=None
-        for i,d in enumerate(delays):
-            if d:
-                self.events.emit('info',f'retrying in {d:.1f}s (stream attempt {i} failed)')
-                time.sleep(d)
-            try:
-                yield from fn()
-                return
-            except Exception as exc:
-                last=exc
-                self.events.emit('info',f'stream attempt {i+1} failed: {type(exc).__name__}: {str(exc)[:120]}')
-        raise last
     def _maybe_auto_compact(self):
         """Compact automatically once per user request when context crosses the threshold."""
         cfg=self.config
@@ -352,37 +320,20 @@ class CodingAgent:
             self.events.emit('usage','model usage',available=False,advice=USAGE_ADVICE)
     def run(self,user_text):
         self.events.emit('start','model request')
-        self.session.record('user',{'text':user_text});self.history.append({'role':'user','content':user_text})
+        self.session.record('user',{'text':user_text});self.history.append(UserMsg(text=user_text))
         self._turn_memory=self.memory.build(user_text,self.history[:-1])
         self._gate_nudged=False;self._edited_since_check=False
         self._auto_compact_attempted=False;self.streamed_any=False
         try:
             for _ in range(self.config.max_turns):
                 self._maybe_auto_compact()
-                try: result=self._responses() if self.mode in {'auto','responses'} else self._chat()
-                except Exception as exc:
-                    self.events.emit('error','model request failed',error=str(exc))
-                    self.session.record('error',{'stage':'model_request','mode':self.mode,'message':str(exc)})
-                    # Local OpenAI-compatible servers sometimes reject malformed
-                    # function-call JSON before returning an API response. Retry once
-                    # with a corrective instruction and a compact history rather than
-                    # immediately crashing or blindly replaying the same request.
-                    if self.mode=='auto':
-                        self.mode='chat'
-                        self.history=[{'role':'user','content':user_text},{'role':'user','content':'The previous model request failed at the tool-call transport layer. Do not emit large inline file contents. Re-read the target file and use small apply_patch/replace_text operations with valid JSON.'}]
-                        continue
-                    raise
+                result=self._step()
                 if result is not None:
-                    open_items=[t for t in self.todos if str(t.get('status'))!='done']
-                    if getattr(self.config,'verify_gate',False) and not self._gate_nudged and (open_items or self._edited_since_check):
-                        self._gate_nudged=True
-                        self.events.emit('info','verify gate: nudging before finish (open todos / unverified edits)')
-                        self.session.record('verify_gate',{'open_todos':len(open_items),'edited_since_check':self._edited_since_check})
-                        self.history.append({'role':'user','content':VERIFY_GATE_MSG})
-                        continue
+                    if self._verify_gate_should_nudge():continue
                     self.metrics.price(self.config.price_input_per_million,self.config.price_output_per_million)
                     self.events.emit('done','model response')
-                    return AgentResult(result,self.metrics.tool_calls,self.metrics.as_dict(),streamed=getattr(self,'streamed_any',False))
+                    return AgentResult(result,self.metrics.tool_calls,self.metrics.as_dict(),
+                                       streamed=getattr(self,'streamed_any',False))
                 self._trim()
             raise RuntimeError(f'agent exceeded {self.config.max_turns} controller turns')
         except KeyboardInterrupt:
@@ -392,70 +343,74 @@ class CodingAgent:
             self.session.record('paused',{'repaired_outputs':added})
             self.events.emit('info','paused by user — context kept; /continue resumes')
             raise PauseInterrupt from None
-    def _responses(self):
-        with Timer() as timer:r=self._with_retries(lambda:self.provider.responses(model=self.config.model,instructions=SYSTEM_PROMPT,input=self._with_context_blocks(self.history),tools=tool_schemas()))
-        u=extract_usage(getattr(r,'usage',None));self.metrics.add(getattr(r,'usage',None),timer.elapsed_ms)
-        self.session.record('usage',u if u is not None else {'available':False,'advice':USAGE_ADVICE});items=list(r.output);self.history.extend(items)
-        self._emit_usage(u)
-        calls=[x for x in items if getattr(x,'type',None)=='function_call']
-        if not calls:
-            text=r.output_text or '(no textual response)';self.session.record('assistant',{'text':text,'metrics':self.metrics.as_dict()});return text
-        for c in calls:
-            self.metrics.tool_calls+=1;args,err,repaired=parse_tool_arguments(c.arguments)
-            self.events.emit('info',f'tool arguments: {c.name}',repaired=repaired)
-            result=json.dumps({'status':'tool_argument_error','error':err,'recovery':'Re-read the file and retry with a smaller patch; do not repeat stale text.'}) if err else self._dispatch(c.name,args)
-            self.session.record('tool_call',{'name':c.name,'arguments_raw':c.arguments});self.session.record('tool_result',{'name':c.name,'result':result})
-            self.history.append({'type':'function_call_output','call_id':c.call_id,'output':result})
-        return None
-    def _chat(self):
-        tools=[{'type':'function','function':{'name':x['name'],'description':x['description'],'parameters':x['parameters']}} for x in tool_schemas()]
-        if self.config.stream_chat:return self._chat_streamed(tools)
-        with Timer() as timer:r=self._with_retries(lambda:self.provider.chat(model=self.config.model,messages=[{'role':'system','content':SYSTEM_PROMPT}]+self._with_context_blocks(self.history),tools=tools,tool_choice='auto'))
-        u=extract_usage(getattr(r,'usage',None));self.metrics.add(getattr(r,'usage',None),timer.elapsed_ms)
-        self.session.record('usage',u if u is not None else {'available':False,'advice':USAGE_ADVICE});m=r.choices[0].message
-        self._emit_usage(u)
-        return self._handle_chat_message(m)
-    def _chat_streamed(self,tools):
-        """Streaming chat transport: text tokens emit live; tool calls accumulate."""
+    def _verify_gate_should_nudge(self):
+        """Append one corrective nudge when finishing with open todos or unverified
+        edits. At most once per request; returns True when the loop should continue."""
+        if not getattr(self.config,'verify_gate',False) or self._gate_nudged:return False
+        open_items=[t for t in self.todos if str(t.get('status'))!='done']
+        if not (open_items or self._edited_since_check):return False
+        self._gate_nudged=True
+        self.events.emit('info','verify gate: nudging before finish (open todos / unverified edits)')
+        self.session.record('verify_gate',{'open_todos':len(open_items),
+                                           'edited_since_check':self._edited_since_check})
+        self.history.append(UserMsg(text=VERIFY_GATE_MSG))
+        return True
+    def _next_transport(self):
+        """The next transport to try after the current one failed, or None."""
+        try:i=self._transports.index(self.transport)
+        except ValueError:return None
+        return self._transports[i+1] if i+1<len(self._transports) else None
+    def _step(self):
+        """One controller turn: send the conversation, record the reply, dispatch any
+        tools. Returns the final assistant text, or None when tools ran.
+
+        A transport failure falls through to the next transport and re-encodes the
+        SAME history — canonical items belong to no wire format, so a downgrade
+        costs a retry rather than the conversation.
+        """
+        try:reply=self._send()
+        except Exception as exc:
+            self.events.emit('error','model request failed',error=str(exc))
+            self.session.record('error',{'stage':'model_request','transport':self.transport.name,
+                                         'message':str(exc)})
+            nxt=self._next_transport()
+            if nxt is None:raise
+            self.session.record('transport_fallback',{'from':self.transport.name,'to':nxt.name,
+                                                      'reason':str(exc)[:300]})
+            self.events.emit('info',f'transport: {self.transport.name} → {nxt.name} (previous request failed)')
+            self.transport=nxt
+            # The model may also have produced the malformed call that was rejected.
+            self.history.append(UserMsg(text=TRANSPORT_RETRY_MSG))
+            return None
+        return self._consume(reply)
+    def _send(self):
         with Timer() as timer:
-            stream=self._stream_with_retries(lambda:self.provider.chat_stream(model=self.config.model,messages=[{'role':'system','content':SYSTEM_PROMPT}]+self._with_context_blocks(self.history),tools=tools,tool_choice='auto'))
-            parts=[];tcalls={};u=None;emitted=False
-            for chunk in stream:
-                cu=getattr(chunk,'usage',None)
-                if cu is not None:u=cu
-                if not getattr(chunk,'choices',None):continue
-                d=chunk.choices[0].delta
-                piece=getattr(d,'content',None) if d else None
-                if piece:
-                    parts.append(piece);emitted=True
-                    self.events.emit('token','stream',text=piece)
-                for tc in ((getattr(d,'tool_calls',None) or []) if d else []):
-                    slot=tcalls.setdefault(tc.index,{'id':'','name':'','args':''})
-                    if getattr(tc,'id',None):slot['id']=tc.id
-                    fn=getattr(tc,'function',None)
-                    if fn is not None:
-                        if getattr(fn,'name',None):slot['name']=fn.name
-                        if getattr(fn,'arguments',None):slot['args']+=fn.arguments
-        u_norm=extract_usage(u);self.metrics.add(u,timer.elapsed_ms)
-        self.session.record('usage',u_norm if u_norm is not None else {'available':False,'advice':USAGE_ADVICE})
-        self.streamed_any=emitted
-        if emitted:self.events.emit('token','stream',end=True)
-        self._emit_usage(u_norm)
-        if tcalls:
-            calls=[SimpleNamespace(id=s['id'],function=SimpleNamespace(name=s['name'],arguments=s['args'])) for _,s in sorted(tcalls.items())]
-            m=SimpleNamespace(content=''.join(parts) or None,tool_calls=calls)
-        else:
-            m=SimpleNamespace(content=''.join(parts) or None,tool_calls=None)
-        return self._handle_chat_message(m)
-    def _handle_chat_message(self,m):
-        if not m.tool_calls:
-            text=m.content or '(no textual response)';self.history.append({'role':'assistant','content':text});self.session.record('assistant',{'text':text,'metrics':self.metrics.as_dict()});return text
-        calls=[{'id':c.id,'type':'function','function':{'name':c.function.name,'arguments':c.function.arguments}} for c in m.tool_calls]
-        self.history.append({'role':'assistant','content':m.content or '','tool_calls':calls})
-        for c in m.tool_calls:
-            self.metrics.tool_calls+=1;args,err,repaired=parse_tool_arguments(c.function.arguments)
-            self.events.emit('info',f'tool arguments: {c.function.name}',repaired=repaired)
-            result=json.dumps({'status':'tool_argument_error','error':err,'recovery':'Re-read the file and retry with a smaller patch; do not repeat stale text.'}) if err else self._dispatch(c.function.name,args)
-            self.session.record('tool_call',{'name':c.function.name,'arguments_raw':c.function.arguments});self.session.record('tool_result',{'name':c.function.name,'result':result})
-            self.history.append({'role':'tool','tool_call_id':c.id,'content':result})
+            reply=self._with_retries(lambda:self.transport.send(
+                self.history,self._advisory_blocks(),tool_schemas(),
+                on_token=lambda t:self.events.emit('token','stream',text=t)))
+        self.metrics.add(reply.raw_usage,timer.elapsed_ms)
+        self.session.record('usage',reply.usage if reply.usage is not None
+                            else {'available':False,'advice':USAGE_ADVICE})
+        self._emit_usage(reply.usage)
+        return reply
+    def _consume(self,reply):
+        """Append the reply to history and run any tools it requested."""
+        if reply.streamed:
+            self.streamed_any=True;self.events.emit('token','stream',end=True)
+        if not reply.tool_calls:
+            text=reply.text or '(no textual response)'
+            self.history.append(AssistantMsg(text=text))
+            self.session.record('assistant',{'text':text,'metrics':self.metrics.as_dict()})
+            return text
+        self.history.append(AssistantMsg(text=reply.text,tool_calls=reply.tool_calls))
+        for call in reply.tool_calls:
+            self.metrics.tool_calls+=1
+            args,err,repaired=parse_tool_arguments(call.arguments)
+            self.events.emit('info',f'tool arguments: {call.name}',repaired=repaired)
+            result=(json.dumps({'status':'tool_argument_error','error':err,
+                                'recovery':'Re-read the file and retry with a smaller patch; do not repeat stale text.'})
+                    if err else self._dispatch(call.name,args))
+            self.session.record('tool_call',{'name':call.name,'arguments_raw':call.arguments})
+            self.session.record('tool_result',{'name':call.name,'result':result})
+            self.history.append(ToolResult(call_id=call.id,output=result,name=call.name))
         return None

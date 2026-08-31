@@ -1,13 +1,13 @@
 import json
-from types import SimpleNamespace as NS
 
 import pytest
 
 from coding_agent.config import Config
 from coding_agent.llm import CodingAgent
+from coding_agent.context import _orphaned
 from coding_agent.session import Session
 
-from tests.test_compact import FakeProvider, cfg as base_cfg, hist
+from tests.test_compact import FakeProvider, hist
 
 
 def make_agent(tmp_path, provider, **overrides):
@@ -27,7 +27,7 @@ def test_auto_compact_triggers_at_threshold(tmp_path):
     agent._maybe_auto_compact()
     assert len(p.calls) == 1                        # summarizer was called
     assert not _orphaned(agent.history)
-    assert agent.history[0]['content'].startswith('[Conversation summary]')
+    assert agent.history[0].text.startswith('[Conversation summary]')
 
 
 def test_no_trigger_below_threshold(tmp_path):
@@ -117,12 +117,3 @@ def test_config_defaults_and_overrides(monkeypatch, tmp_path):
     assert (c2.request_retries, c2.auto_compact, c2.auto_compact_pct) == (5, False, 90)
 
 
-def _orphaned(history):
-    seen = set()
-    for m in history:
-        if m.get('role') == 'assistant' and m.get('tool_calls'):
-            seen.update(c['id'] for c in m['tool_calls'])
-        elif m.get('role') == 'tool':
-            if m.get('tool_call_id') not in seen:
-                return True
-    return False

@@ -17,10 +17,9 @@ Editing follows **read -> fingerprint -> edit -> verify -> recover**.
   flagged, and writing that truncated view back is refused outright — the full-file
   hash would otherwise match while the content silently lost its tail.
 
-Important limitation: if a local inference server itself rejects malformed tool-call JSON before returning an API response, the client cannot repair the already-rejected call. v1.x therefore catches that failure, switches to the compatible chat path in `auto`
-mode, and sends a corrective instruction telling the model to re-read and use smaller
-patches. Note the cost of that recovery: the conversation is restarted from the
-current user request plus the corrective instruction, so earlier turns in the
-conversation are dropped — durable knowledge survives only via project memory, which
-is re-injected per request. The transport stays on `chat` for the rest of the session.
-The model remains responsible for producing the next valid action.
+Important limitation: if a local inference server itself rejects malformed tool-call JSON before returning an API response, the client cannot repair the already-rejected call. The agent therefore catches that failure, switches to the compatible chat transport in
+`auto` mode, and sends a corrective instruction telling the model to re-read and use
+smaller patches. Because history is stored as provider-neutral items, the switch
+re-encodes the existing conversation instead of discarding it, and `/clear` restores
+the preferred transport afterwards. The model remains responsible for producing the
+next valid action.

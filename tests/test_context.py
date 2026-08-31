@@ -1,48 +1,59 @@
-from coding_agent.context import ContextManager, _blocks
+from coding_agent.context import ContextManager, _blocks, _orphaned
+from coding_agent.conversation import AssistantMsg, ToolCall, ToolResult, UserMsg
 
 
-def _orphaned(history):
-    """Return True if any tool message lost its assistant tool_calls parent."""
-    seen_calls = set()
-    for m in history:
-        if m.get('role') == 'assistant' and m.get('tool_calls'):
-            seen_calls.update(c['id'] for c in m['tool_calls'])
-        elif m.get('role') == 'tool':
-            if m.get('tool_call_id') not in seen_calls:
-                return True
-    return False
+def _call(i, results=1):
+    """One assistant tool call plus the results answering it."""
+    out = [AssistantMsg(tool_calls=[ToolCall(id=f'c{i}', name='read_file', arguments='{}')])]
+    out += [ToolResult(call_id=f'c{i}', output='r' * 200) for _ in range(results)]
+    return out
 
 
-def test_trim_keeps_chat_tool_pairs():
-    hist = [{'role': 'user', 'content': 'u1'}]
+def test_trim_keeps_tool_pairs():
+    hist = [UserMsg(text='u1')]
     for i in range(20):
-        hist.append({'role': 'assistant', 'content': '',
-                     'tool_calls': [{'id': f'c{i}'}]})
-        hist.append({'role': 'tool', 'tool_call_id': f'c{i}', 'content': 'r' * 200})
+        hist += _call(i)
     out = ContextManager(500).trim(hist)
     assert not _orphaned(out)
-    assert out[0]['role'] == 'assistant'
+    assert isinstance(out[0], AssistantMsg)
 
 
-def test_trim_keeps_responses_call_output_pairs():
-    hist = []
-    for i in range(20):
-        hist.append({'type': 'function_call', 'call_id': f'x{i}'})
-        hist.append({'type': 'function_call_output', 'call_id': f'x{i}', 'output': 'o' * 200})
-    out = ContextManager(300).trim(hist)
-    calls = {m['call_id'] for m in out if m['type'] == 'function_call'}
-    outputs = {m['call_id'] for m in out if m['type'] == 'function_call_output'}
-    assert calls == outputs
+def test_trim_keeps_multi_result_calls_together():
+    """One call answered by several results is still a single atomic block."""
+    hist = [UserMsg(text='u')]
+    for i in range(15):
+        hist += _call(i, results=3)
+    out = ContextManager(400).trim(hist)
+    assert not _orphaned(out)
+    assert isinstance(out[0], AssistantMsg)
 
 
 def test_blocks_never_split_pairs():
-    hist = [{'role': 'user', 'content': 'u'},
-            {'role': 'assistant', 'content': '', 'tool_calls': [{'id': 'a'}]},
-            {'role': 'tool', 'tool_call_id': 'a', 'content': 'r'}]
-    blocks = _blocks(hist)
-    assert [len(b) for b in blocks] == [1, 2]
+    hist = [UserMsg(text='u'),
+            AssistantMsg(tool_calls=[ToolCall(id='a', name='n', arguments='{}')]),
+            ToolResult(call_id='a', output='r')]
+    assert [len(b) for b in _blocks(hist)] == [1, 2]
+
+
+def test_blocks_leaves_plain_turns_alone():
+    hist = [UserMsg(text='u'), AssistantMsg(text='answer'), UserMsg(text='u2')]
+    assert [len(b) for b in _blocks(hist)] == [1, 1, 1]
+
+
+def test_item_budget_also_drops_whole_blocks():
+    hist = [UserMsg(text='u')]
+    for i in range(10):
+        hist += _call(i)
+    out = ContextManager(10_000_000, max_history_items=5).trim(hist)
+    assert len(out) <= 5
+    assert not _orphaned(out)
 
 
 def test_small_history_untouched():
-    hist = [{'role': 'user', 'content': 'hi'}]
+    hist = [UserMsg(text='hi')]
     assert ContextManager(10).trim(hist) == hist
+
+
+def test_orphan_detector_catches_a_broken_history():
+    """Guards the guard: _orphaned must actually report an orphan."""
+    assert _orphaned([ToolResult(call_id='missing', output='r')]) is True

@@ -5,6 +5,35 @@ version headings below record development history rather than shipped releases.
 
 ## Unreleased
 
+### Transport abstraction: a canonical conversation model
+- **The provider wire format had leaked out of the transport layer.** History stored
+  either Responses items (`{'type':'function_call','call_id':…}`) or Chat messages
+  (`{'role':'assistant','tool_calls':[…]}`) depending on which transport produced them,
+  and five call sites downstream branched on which. New `conversation.py` defines
+  provider-neutral `UserMsg` / `AssistantMsg` / `ToolResult`; history holds only these.
+- **New `transports.py` is the only place a wire format exists.** `ResponsesTransport`,
+  `ChatTransport` and `StreamingChatTransport` each encode canonical items into a
+  request and decode the reply back. `api_mode` selects an ordered fallback chain
+  instead of mutating a string.
+- **Transport fallback is now lossless.** It previously had to discard the whole
+  conversation to switch, because the stored items were in the wrong format for the new
+  transport — the wipe was load-bearing, not merely cautious. A downgrade now re-encodes
+  the same history. It is also journaled (`transport_fallback`), announced in the REPL,
+  and reset by `/clear`, so a downgrade is scoped to a conversation rather than to the
+  process.
+- **`/model` reported the wrong transport.** It printed `config.api_mode` while the
+  session could be pinned elsewhere; it now reports the transport actually in use.
+- Duplicate branches collapsed to one path each: `context._blocks`, `_repair_partial_turn`,
+  `_item_text` (now `conversation.item_text`), `_recent_paths`. `_responses`, `_chat` and
+  `_chat_streamed` became a single `_step`/`_send`/`_consume`. Removed `safe_json`,
+  `_stream_with_retries` and `context._get`, all dead after the collapse.
+- The v0.3 roadmap item "model/provider abstraction" was listed as shipped when
+  `providers.py` was a pass-through. It is now true.
+- 12 new transport tests; two format-specific interrupt-repair tests became one. Suite
+  216 → 228. `llm.py` shrank 461 → 416 lines and every dual-branch site collapsed, but
+  the two new modules make production code net larger (+192 lines) — the win is one
+  code path per concern and a lossless fallback, not fewer lines.
+
 ### Fixes & hardening (code dive, round 2)
 - **Command output could lose its tail.** The reader thread was joined for 0.2s after
   the process exited; when the consumer lagged the process — which it does, since the

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone as tz
 from types import SimpleNamespace as NS
 
 from coding_agent.config import Config
+from coding_agent.conversation import AssistantMsg, ToolCall, ToolResult
 from coding_agent.llm import CodingAgent, _recent_paths
 from coding_agent.memory import ProjectMemory, select_records, tokenize, render_record
 from coding_agent.session import Session
@@ -281,7 +282,7 @@ def test_run_injects_memory_block_into_payload_not_history(tmp_path):
     msgs = p.calls[0]['messages']
     assert msgs[-1]['role'] == 'user' and '[project memory]' in msgs[-1]['content']
     assert 'pytest -q' in msgs[-1]['content']
-    assert all('[project memory]' not in str(m.get('content', '')) for m in agent.history)
+    assert all('[project memory]' not in getattr(m, 'text', '') for m in agent.history)
 
 def test_injection_records_event_and_bumps_hits(tmp_path):
     _seed(tmp_path)
@@ -309,13 +310,19 @@ def test_injection_disabled_via_config(tmp_path):
 
 def test_recent_paths_harvested_from_history_tool_args():
     history = [
-        {'role': 'assistant', 'tool_calls': [{'function': {'name': 'read_file',
-         'arguments': '{"path": "coding_agent/llm.py"}'}}]},
-        {'role': 'assistant', 'tool_calls': [{'function': {'name': 'replace_text',
-         'arguments': '{"path":"a/b.py","new":"x"}'}}]},
-        {'type': 'function_call', 'call_id': 'c9', 'output': 'ok'},
+        AssistantMsg(tool_calls=[ToolCall(id='c1', name='read_file',
+                                          arguments='{"path": "coding_agent/llm.py"}')]),
+        AssistantMsg(tool_calls=[ToolCall(id='c2', name='replace_text',
+                                          arguments='{"path":"a/b.py","new":"x"}')]),
+        ToolResult(call_id='c2', output='ok'),
     ]
     assert _recent_paths(history) == ['coding_agent/llm.py', 'a/b.py']
+
+
+def test_recent_paths_reads_the_paths_array_too():
+    history = [AssistantMsg(tool_calls=[ToolCall(id='c3', name='run_tests',
+                                                 arguments='{"paths":["x/y.py","z.py"]}')])]
+    assert _recent_paths(history) == ['x/y.py', 'z.py']
 
 def test_memory_failure_never_breaks_request(tmp_path, monkeypatch):
     _seed(tmp_path)

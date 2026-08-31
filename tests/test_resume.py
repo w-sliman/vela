@@ -4,6 +4,7 @@ from datetime import datetime, timezone as tz
 from coding_agent.config import Config
 from coding_agent.llm import CodingAgent
 from coding_agent.resume import build_digest, list_sessions, resolve_session
+from coding_agent.conversation import UserMsg
 from coding_agent.session import Session
 
 
@@ -38,7 +39,7 @@ def sample_events():
 def test_list_sessions_newest_first_excludes_active_and_counts(tmp_path):
     import os, time
     a = write_trace(tmp_path, '20260101-000000-000000', [ev('user', {'text': 'older task'})])
-    b = write_trace(tmp_path, '20260202-000000-000000', sample_events())
+    write_trace(tmp_path, '20260202-000000-000000', sample_events())
     os.utime(a, (time.time() - 3600,) * 2)                       # force older mtime
     active = write_trace(tmp_path, '20260303-000000-000000', [])
     rows = list_sessions(tmp_path, exclude=active)
@@ -54,7 +55,7 @@ def test_list_sessions_empty_workspace(tmp_path):
 
 def test_resolve_defaults_to_newest_and_supports_index(tmp_path):
     a = write_trace(tmp_path, 'aaa-old', [ev('user', {'text': 'old'})])
-    b = write_trace(tmp_path, 'bbb-new', [ev('user', {'text': 'new'})])
+    write_trace(tmp_path, 'bbb-new', [ev('user', {'text': 'new'})])
     import os, time; os.utime(a, (time.time() - 9999,) * 2)
     hit, err = resolve_session(tmp_path, None); assert err is None and hit['id'] == 'bbb-new'
     hit, _ = resolve_session(tmp_path, 'last'); assert hit['id'] == 'bbb-new'
@@ -76,7 +77,7 @@ def test_resolve_no_sessions(tmp_path):
 def test_resolve_skips_zero_request_traces(tmp_path):
     import os, time
     empty = write_trace(tmp_path, '20260505-empty', [])
-    good = write_trace(tmp_path, '20260404-good', [ev('user', {'text': 'real work'})])
+    write_trace(tmp_path, '20260404-good', [ev('user', {'text': 'real work'})])
     os.utime(empty, (time.time() + 10,) * 2)                     # empty but NEWEST
     hit, err = resolve_session(tmp_path, None)
     assert err is None and hit['id'] == '20260404-good'          # empty trace skipped
@@ -126,15 +127,15 @@ def make_agent(tmp_path):
                'prompt', 5000, 30000, 10, 10, 20, 100, 10000, False, False, False,
                True, False, 0.0, 0.0, 128000, stream_chat=False)
     agent = CodingAgent(c, None, Session(tmp_path))
-    agent.history = [{'role': 'user', 'content': 'stale context'}]
+    agent.history = [UserMsg(text='stale context')]
     return agent
 
 def test_start_resumed_replaces_context_and_journals_lineage(tmp_path):
     agent = make_agent(tmp_path)
     agent.start_resumed('[Resumed session abc] prior state…', '20260101-000000-000000')
     assert len(agent.history) == 1
-    assert agent.history[0]['role'] == 'user'
-    assert agent.history[0]['content'].startswith('[Resumed session abc]')
+    assert isinstance(agent.history[0], UserMsg)
+    assert agent.history[0].text.startswith('[Resumed session abc]')
     lines = agent.session.path.read_text().splitlines()
     kinds = [json.loads(l)['kind'] for l in lines]
     assert 'resumed_from' in kinds
