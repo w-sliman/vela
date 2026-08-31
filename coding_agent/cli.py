@@ -148,7 +148,7 @@ def main():
             if td:
                 done=sum(1 for t in td if str(t.get('status'))=='done')
                 console.print(f'[dim]todos: {done}/{len(td)} done[/dim]')
-            console.print(f'[dim]tokens: {m.input_tokens} in / {m.output_tokens} out / {m.input_tokens+m.output_tokens} total | context: {_fmt_tokens(m.last_input_tokens)}/{_fmt_tokens(win)} ({ctxpct:.0f}%) of {win:,} window[/dim]' if m.last_input_tokens else f'[dim]tool calls: {r.tool_calls} (no usage data reported by endpoint)[/dim]')
+            console.print(f'[dim]tokens: {m.input_tokens} in / {m.output_tokens} out / {m.input_tokens+m.output_tokens} total | context: {_fmt_tokens(m.last_input_tokens)}/{_fmt_tokens(win)} ({ctxpct:.0f}%)[/dim]' if m.last_input_tokens else f'[dim]tool calls: {r.tool_calls} (no usage data reported by endpoint)[/dim]')
         except PauseInterrupt:
             console.print('[yellow]paused — plan, todos and history kept; type /continue to resume[/yellow]');continue
         except KeyboardInterrupt:

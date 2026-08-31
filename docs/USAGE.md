@@ -78,9 +78,9 @@ the prompt with todos, memory and conversation intact:
 left off" nudge — the model sees its own todo list and keeps going. You can
 also type a new instruction instead, which simply continues the same context.
 
-## CONTRIBUTING.md
+## Project convention files
 
-Put project-specific engineering conventions in `CONTRIBUTING.md`, e.g.:
+Put project-specific engineering conventions in a convention file at the root of the workspace, e.g.:
 
 ```text
 Always run pytest after changing Python files.

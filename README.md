@@ -1,8 +1,29 @@
 # Workspace Coding Agent
 
-A local coding agent that runs entirely from a normal Python `venv`. No Docker is required.
+A local coding agent built on one principle: **the LLM proposes; deterministic Python
+executes and enforces policy.**
 
-It gives you a Rich terminal interface where an LLM can inspect a workspace, create/edit files, apply patches, run tests/scripts, diagnose failures, and iterate. The model proposes actions; deterministic Python tools perform the actual operations.
+The model never touches the filesystem or a subprocess. It emits tool calls; Python
+validates the arguments against a schema, applies a command policy, performs the
+operation, and returns a structured result — including structured *recovery guidance*
+when the operation fails. Safety and correctness properties come from the Python
+layer, so they hold regardless of which model you point at it.
+
+That constraint shapes everything else here: history trimming that can never orphan a
+tool-call pair, edits that fail closed on a stale hash rather than half-applying, a
+`/resume` that rebuilds task state as a digest instead of replaying tool calls, and
+token telemetry that reports "unknown" rather than guessing.
+
+It runs entirely from a normal Python `venv` — no Docker required — and gives you a
+Rich terminal REPL where the agent inspects a workspace, edits files, applies patches,
+runs tests, diagnoses failures, and iterates.
+
+## Status
+
+**Unreleased.** This project has never been published or tagged: there is no release,
+no version guarantee, and no license grant yet. Version numbers in `pyproject.toml`
+and `CHANGELOG.md` track development history only — treat every interface here as
+subject to change without notice.
 
 ## Quick start
 
@@ -117,29 +138,51 @@ This is **not a security sandbox**: shell commands ultimately run as your local 
 
 ## LLM
 
-The project uses the OpenAI Responses API with function tools. The model is configured with `OPENAI_MODEL`; no model name is hard-coded so you can choose what is available to your account.
+Any OpenAI-compatible endpoint works — hosted or local. Two transports are supported
+and selected with `OPENAI_API_MODE`:
 
-The agent loops over model responses and tool calls until it gets a final response. Tool results are fed back into the model so it can inspect, change, test, and iterate.
+- **Responses API** with function tools;
+- **Chat Completions** with live token streaming (the default in `auto` mode once
+  the Responses path is unavailable, and where `CODER_STREAM` applies).
+
+In `auto` mode the agent starts on Responses and falls back to Chat if the transport
+rejects a request — the failure mode local inference servers hit when a model emits
+malformed tool-call JSON. No model name is hard-coded; set `OPENAI_MODEL` to whatever
+your account or server offers.
+
+The agent loops over model responses and tool calls until it gets a final response.
+Tool results — including failures, with recovery hints — are fed back so the model can
+inspect, change, test, and iterate.
 
 ## Project layout
 
 ```text
 coding_agent/
-  cli.py       # Rich interface
-  llm.py       # Responses API loop
-  tools.py     # tool schemas + dispatcher
-  workspace.py # bounded file access
-  shell.py     # subprocess execution
-  policy.py    # deterministic safety policy
-  session.py   # JSONL session logging
-  config.py    # environment config
-  prompts.py   # agent instructions
+  cli.py         # Rich REPL, slash commands, approval prompts
+  llm.py         # tool-calling loop, compaction, retries, verify gate, pause
+  providers.py   # OpenAI-compatible client wrapper
+  tools.py       # tool schemas (single source of truth) + dispatcher
+  workspace.py   # path-safe, size-bounded file access
+  shell.py       # subprocess execution, timeouts, secret-scrubbed env
+  policy.py      # command classification + path containment
+  editor.py      # unified diffs, exact/fuzzy/line-range replacement
+  search.py      # regex search + AST symbol index
+  context.py     # pair-aware history blocks and trimming
+  memory.py      # persistent records, lexical scoring, curation
+  resume.py      # trace index and digest construction
+  telemetry.py   # exact usage extraction, metrics, timers
+  session.py     # JSONL session traces
+  git.py         # repo bootstrap, per-edit checkpoints, scoped undo
+  events.py ui.py            # event bus, rendering
+  agents.py json_repair.py   # sub-agent delegation, defensive tool-JSON parsing
+  prompts.py config.py       # system prompt, environment config
+  browser.py github.py sandbox.py   # opt-in integrations, off by default
 
-tests/
-docs/
-scripts/
-workspace/
+tests/   docs/   smoke/   scripts/   workspace/
 ```
+
+Conventions and the invariants that must not be broken are in
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Tests
 
@@ -159,4 +202,4 @@ Inspect the existing implementation first. Add retry handling to the HTTP client
 
 For larger or untrusted tasks, work inside a disposable copy of the repository.
 
-See `CHANGELOG.md` for release history, and `docs/SETUP.md`, `docs/USAGE.md`, `docs/ARCHITECTURE.md`, `docs/TOOLS.md`, `docs/EDITING.md`, `docs/SECURITY.md`, and `docs/ROADMAP.md` for details.
+See `CONTRIBUTING.md` for engineering conventions, `CHANGELOG.md` for release history, and `docs/SETUP.md`, `docs/USAGE.md`, `docs/ARCHITECTURE.md`, `docs/TOOLS.md`, `docs/EDITING.md`, `docs/SECURITY.md`, and `docs/ROADMAP.md` for details.

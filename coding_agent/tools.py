@@ -49,14 +49,14 @@ def fn(name,desc,props=None,req=None):return {'type':'function','name':name,'des
 def tool_schemas():
  return [
  fn('list_files','List workspace files/directories.',{'path':{'type':'string'},'max_depth':{'type':'integer'}},[]),
- fn('read_file','Read a file. Returns content plus a SHA-256 hash for safe editing.',{'path':{'type':'string'}},['path']),
+ fn('read_file','Read a file. Returns content, a SHA-256 hash for safe editing, and a truncated flag when the file exceeded the read limit.',{'path':{'type':'string'}},['path']),
  fn('write_file','Create/replace a file. Prefer apply_patch or replace_text for edits.',{'path':{'type':'string'},'content':{'type':'string','maxLength':12000},'expected_hash':{'type':'string'}},['path','content']),
  fn('replace_text','Replace text in a file. Two modes: (a) exact old->new text replacement, (b) line range start_line..end_line (1-based, inclusive) replaced verbatim by new. If it fails, the tool returns structured recovery data, often including closest-match lines; re-read and retry.',{'path':{'type':'string'},'old':{'type':'string','maxLength':8000},'new':{'type':'string','maxLength':8000},'occurrence':{'type':'integer'},'expected_hash':{'type':'string'},'fuzzy':{'type':'boolean'},'start_line':{'type':'integer','description':'1-based first line to replace (alternative to old)'},'end_line':{'type':'integer','description':'1-based last line to replace (defaults to start_line)'}},['path','new']),
  fn('apply_patch','Apply a unified diff with context validation and return the resulting diff.',{'path':{'type':'string'},'patch':{'type':'string','maxLength':16000},'expected_hash':{'type':'string'}},['path','patch']),
  fn('make_directory','Create a directory.',{'path':{'type':'string'}},['path']),
  fn('search_text','Regex search across workspace text.',{'query':{'type':'string'},'max_results':{'type':'integer'}},['query']),
  fn('search_symbols','Find Python functions/classes via AST: qualified names (Class.method), kind, line span, signature.',{'query':{'type':'string'}},[]),
- fn('run_command','Run a shell command subject to policy/approval.',{'command':{'type':'string'},'timeout':{'type':'integer'}},['command']),
+ fn('run_command','Run a shell command subject to policy/approval.',{'command':{'type':'string'},'timeout':{'type':'integer','description':'seconds; clamped to the configured ceiling (CODER_COMMAND_TIMEOUT)'}},['command']),
  fn('run_tests','Select/run tests relevant to changed paths.',{'paths':{'type':'array','items':{'type':'string'}},'command':{'type':'string'}},[]),
  fn('git_status','Show Git status.',{},[]),fn('git_diff','Show Git diff.',{'staged':{'type':'boolean'}},[]),
  fn('git_checkpoint','Create a Git checkpoint; always requires approval.',{'message':{'type':'string'}},['message']),
@@ -94,13 +94,24 @@ def _dispatch_impl(ctx,name,a):
  try:
   missing=[k for k in _REQ.get(name,()) if k not in a]
   if missing:raise ValueError(f'missing required argument(s): {", ".join(missing)}')
-  if name=='list_files':return json.dumps(ctx.workspace.list_files(a.get('path','.'),int(a.get('max_depth',3))),indent=2)
+  if name=='list_files':
+   entries,truncated=ctx.workspace.list_files_bounded(a.get('path','.'),int(a.get('max_depth',3)))
+   out={'path':a.get('path','.'),'entries':entries,'truncated':truncated}
+   if truncated:out['warning']='listing was capped; narrow it with a subdirectory path or a smaller max_depth.'
+   return json.dumps(out,indent=2)
   if name=='read_file':
-   return json.dumps({'path':a['path'],'content':ctx.workspace.read_file(a['path']),'sha256':ctx.workspace.hash_file(a['path'])},indent=2)
+   text,truncated=ctx.workspace.read_file_bounded(a['path'])
+   out={'path':a['path'],'content':text,'sha256':ctx.workspace.hash_file(a['path']),'truncated':truncated}
+   if truncated:out['warning']=('only the first part of this file is shown; sha256 covers the WHOLE file. '
+     'Do not rewrite this file with write_file — edit it with replace_text (start_line/end_line) or apply_patch.')
+   return json.dumps(out,indent=2)
   if name=='write_file':
    old='';
    try:old=ctx.workspace.read_raw(a['path'])
    except FileNotFoundError:pass
+   # Validate first: approving a diff that then fails on a stale hash wastes the
+   # user's decision and reads as a bug.
+   ctx.workspace.preflight_write(a['path'],a['content'],a.get('expected_hash'))
    if not _approve_edit(ctx,f'edit {a["path"]}',old,a['content'],a['path']):return json.dumps({'status':'denied','reason':'user declined this edit'},indent=2)
    result=ctx.workspace.write_file(a['path'],a['content'],a.get('expected_hash'))
    cp=_checkpoint(ctx,f'auto: write_file {a["path"]}')
@@ -120,7 +131,7 @@ def _dispatch_impl(ctx,name,a):
   if name=='make_directory':return ctx.workspace.make_directory(a['path'])
   if name=='search_text':return json.dumps(search_text(ctx.workspace.root,a['query'],int(a.get('max_results',100))),indent=2)
   if name=='search_symbols':return json.dumps(search_symbols(ctx.workspace.root,a.get('query','')),indent=2)
-  if name=='run_command':return _run(ctx,a['command'],int(a.get('timeout',ctx.config.command_timeout)))
+  if name=='run_command':return _run(ctx,a['command'],_timeout(ctx,a.get('timeout')))
   if name=='run_tests':
    cmd=a.get('command') or _select_tests(ctx.workspace.root,a.get('paths',[]));return _run(ctx,cmd,ctx.config.command_timeout)
   if name=='git_status':
@@ -171,6 +182,17 @@ def dispatch(ctx,name,a):
         cb(name, result)
     return result
 
+def _timeout(ctx,requested):
+ """Clamp a model-supplied timeout to 1..config.command_timeout seconds.
+
+ The model may ask for less than the configured ceiling but never more, and
+ junk values fall back to the ceiling rather than raising or hanging the REPL.
+ """
+ ceiling=int(ctx.config.command_timeout)
+ if requested is None:return ceiling
+ try:want=int(requested)
+ except (TypeError,ValueError):return ceiling
+ return max(1,min(want,ceiling))
 def _run(ctx,command,timeout):
  d=ctx.shell.classify(command)
  if d.action=='deny':return json.dumps({'status':'denied','reason':d.reason})

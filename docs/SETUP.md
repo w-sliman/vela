@@ -1,5 +1,8 @@
 # Setup
 
+> **Unreleased project.** There is no packaged release or license grant; install from
+> a checkout only, and expect interfaces to change.
+
 ## Requirements
 
 - Python 3.11+

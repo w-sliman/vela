@@ -79,13 +79,16 @@ Memory is enforced-bounded so it can't silently bloat:
 
 - **Cap** — `CODER_MEMORY_MAX_RECORDS` (200): every write path (`remember`,
   distillation) prunes back to the cap deterministically — lowest `hits`, then
-  oldest `last_seen`, dropped first. Hot, recently used memories survive.
+  oldest `last_seen`, then insertion order, dropped first. Hot, recently used
+  memories survive. Selection is by position, never by value: two records may
+  legitimately carry identical text, and comparing whole records would drop both.
 - **TTL** — `CODER_MEMORY_TTL_DAYS` (0 = off): records untouched longer than
   this expire on the same prune passes.
 - **Consolidation** — `/memory consolidate [focus]` shows the model every record
   and asks it to group duplicates/paraphrases (2+ ids per group, canonical
   wording, merged tags/paths). Python performs the merge: the primary id keeps
-  its identity, hits are summed, dates spanned, members removed; singleton or
+  its identity, hits are summed, dates spanned (members with no timestamp are
+  skipped rather than collapsing the span), members removed; singleton or
   unknown-id groups are ignored. Journaled as `memory_consolidated`. The model
   only ever *proposes groups* — grouping, wording and all writes are validated
   and executed by deterministic code.

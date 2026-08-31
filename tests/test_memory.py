@@ -421,3 +421,66 @@ def test_render_record_shape_and_empty_dump():
     out = render_record(r)
     assert out.startswith('[r7/preference] dense style') and '(tags: style)' in out
 
+
+
+# ── prune selects by position, not by value ─────────────────────────────────
+
+def test_prune_keeps_one_of_two_identical_records(tmp_path):
+    """Two records may legitimately hold the same text; dropping by value kills both."""
+    m = ProjectMemory(tmp_path)
+    # add() dedupes exact kind+text, so write the duplicate pair directly
+    now = datetime.now(tz.utc).isoformat()
+    twin = {'kind': 'fact', 'text': 'same text', 'tags': [], 'paths': [],
+            'created': now, 'last_seen': now, 'hits': 0}
+    m._write({'version': 2, 'records': [
+        dict(twin, id='r1'),
+        dict(twin, id='r2'),
+        dict(twin, id='r3', text='distinct', hits=9),
+    ]})
+    removed = m.prune(max_records=2)
+    assert len(removed) == 1
+    remaining = {r['id'] for r in m.records()}
+    assert len(remaining) == 2
+    assert 'r3' in remaining, 'the hottest record must survive'
+
+
+def test_prune_returns_empty_when_nothing_to_drop(tmp_path):
+    m = ProjectMemory(tmp_path)
+    m.add('fact', 'only one')
+    assert m.prune(max_records=10, ttl_days=0) == []
+    assert len(m.records()) == 1
+
+
+def test_prune_ttl_and_cap_compose(tmp_path):
+    m = ProjectMemory(tmp_path)
+    old = (datetime.now(tz.utc) - timedelta(days=400)).isoformat()
+    now = datetime.now(tz.utc).isoformat()
+    m._write({'version': 2, 'records': [
+        {'id': 'r1', 'kind': 'fact', 'text': 'stale', 'tags': [], 'paths': [],
+         'created': old, 'last_seen': old, 'hits': 50},
+        {'id': 'r2', 'kind': 'fact', 'text': 'cold', 'tags': [], 'paths': [],
+         'created': now, 'last_seen': now, 'hits': 0},
+        {'id': 'r3', 'kind': 'fact', 'text': 'hot', 'tags': [], 'paths': [],
+         'created': now, 'last_seen': now, 'hits': 7},
+    ]})
+    removed = m.prune(max_records=1, ttl_days=90)
+    assert set(removed) == {'r1', 'r2'}          # TTL drops r1 even though it is hot
+    assert [r['id'] for r in m.records()] == ['r3']
+
+
+# ── consolidate must not collapse the date span ─────────────────────────────
+
+def test_consolidate_ignores_members_missing_timestamps(tmp_path):
+    m = ProjectMemory(tmp_path)
+    m._write({'version': 2, 'records': [
+        {'id': 'r1', 'kind': 'fact', 'text': 'a', 'tags': [], 'paths': [],
+         'created': '2026-01-01T00:00:00+00:00', 'last_seen': '2026-02-01T00:00:00+00:00',
+         'hits': 2},
+        {'id': 'r2', 'kind': 'fact', 'text': 'a again', 'tags': [], 'paths': [], 'hits': 3},
+    ]})
+    merged, removed = m.consolidate([{'ids': ['r1', 'r2'], 'kind': 'fact', 'text': 'a merged'}])
+    assert merged == ['r1'] and removed == ['r2']
+    primary = m.records()[0]
+    assert primary['created'] == '2026-01-01T00:00:00+00:00', 'span must not collapse to ""'
+    assert primary['last_seen'] == '2026-02-01T00:00:00+00:00'
+    assert primary['hits'] == 5

@@ -20,6 +20,17 @@ dev = ["pytest>=8.0", "ruff>=0.8", "mypy>=1.13"]
 [project.scripts]
 coder = "coding_agent.cli:main"
 
+[tool.ruff]
+# Single source of truth for both scripts/check.sh and CI, so the two cannot drift.
+# py311 is the floor declared by requires-python; pinning it here is what catches
+# 3.12-only syntax (e.g. PEP 701 f-strings) before it reaches an unsupported runtime.
+target-version = "py311"
+
+[tool.ruff.lint]
+# The source is deliberately dense (semicolon-joined statements, one-line methods).
+# Gate on real defects — undefined names, unused bindings, syntax errors — not layout.
+select = ["F", "E9"]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]

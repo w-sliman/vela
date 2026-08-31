@@ -3,11 +3,17 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The package claims requires-python = ">=3.11"; test the floor as well as
+        # the current version, or 3.12-only syntax slips in unnoticed.
+        python-version: ['3.11', '3.12']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python-version }}
       - run: pip install -r requirements.txt pytest ruff
       - run: pytest -q
       - run: python smoke/runner.py

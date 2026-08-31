@@ -232,7 +232,8 @@ class CodingAgent:
         pm=ProjectMemory(self.config.workspace);recs=pm.records()
         if len(recs)<2:return {'merged':0,'removed':0,'pruned':0,'before':len(recs),'after':len(recs),'reason':'fewer than 2 records'}
         listing='\n'.join(f"{r['id']} [{r.get('kind','fact')}] tags={r.get('tags',[])} paths={r.get('paths',[])} hits={r.get('hits',0)} :: {r.get('text','')}" for r in recs)[:20000]
-        prompt=(f'{"Focus: "+focus+"\n" if focus else ""}Current memory records:\n{listing}\n\n'
+        focus_line=f'Focus: {focus}\n' if focus else ''
+        prompt=(f'{focus_line}Current memory records:\n{listing}\n\n'
                 'Return ONLY the JSON groups object; use an empty list when nothing overlaps.')
         with Timer() as timer:r=self._with_retries(lambda:self.provider.chat(model=self.config.model,messages=[{'role':'system','content':CONSOLIDATE_SYSTEM},{'role':'user','content':prompt}]))
         u=extract_usage(getattr(r,'usage',None));self.metrics.add(getattr(r,'usage',None),timer.elapsed_ms)
@@ -334,9 +335,13 @@ class CodingAgent:
         win=cfg.context_window_tokens;last=self.metrics.last_input_tokens
         if not win or not last or last/win*100<cfg.auto_compact_pct:return
         self._auto_compact_attempted=True
-        res=self.compact()
+        # A summarizer failure must not take the user's request down with it:
+        # degrade to "not compacted" and let normal trimming bound the context.
+        try:res=self.compact()
+        except Exception as exc:
+            self.events.emit('info',f'auto-compact failed, continuing untrimmed: {type(exc).__name__}')
+            self.session.record('error',{'stage':'auto_compact','message':str(exc)});return
         if res.get('compacted'):
-            now=f"{self.metrics.last_input_tokens/win*100:.0f}%" if win else '?'
             self.events.emit('info',f"auto-compact: {res['turns_removed']} turn(s) summarized, kept last {res['turns_kept']}")
     def _emit_usage(self,u):
         """Publish per-turn token/context usage for live display."""
@@ -350,7 +355,6 @@ class CodingAgent:
         self.session.record('user',{'text':user_text});self.history.append({'role':'user','content':user_text})
         self._turn_memory=self.memory.build(user_text,self.history[:-1])
         self._gate_nudged=False;self._edited_since_check=False
-        calls=0
         self._auto_compact_attempted=False;self.streamed_any=False
         try:
             for _ in range(self.config.max_turns):
@@ -379,7 +383,7 @@ class CodingAgent:
                     self.metrics.price(self.config.price_input_per_million,self.config.price_output_per_million)
                     self.events.emit('done','model response')
                     return AgentResult(result,self.metrics.tool_calls,self.metrics.as_dict(),streamed=getattr(self,'streamed_any',False))
-                calls=self.metrics.tool_calls;self._trim()
+                self._trim()
             raise RuntimeError(f'agent exceeded {self.config.max_turns} controller turns')
         except KeyboardInterrupt:
             # Cooperative pause: close any dangling tool-call pair so history stays

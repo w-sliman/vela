@@ -47,6 +47,9 @@ def unified_apply(original, patch):
         for line in pl[hi+1:end]:
             if line.startswith(('---','+++')): continue
             if not line: continue
+            # A blank context line is canonically ' \n', but many diff producers
+            # strip the trailing space, leaving a bare newline. Treat it as context.
+            if line in ('\n','\r\n'): line=' '+line
             mark,body=line[0],line[1:]
             if mark==' ':
                 if pos+consumed>=len(out) or out[pos+consumed]!=body: raise ValueError('patch context does not match')

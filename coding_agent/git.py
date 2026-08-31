@@ -17,10 +17,6 @@ class Git:
         if self.run('add','-A').returncode:return None
         r=self.run('commit','-m',msg)
         return 'committed' if r.returncode==0 else 'clean'
-    def undo_last(self):
-        """Revert workspace to the state before the last snapshot."""
-        r=self.run('reset','--hard','HEAD~1')
-        return r
     def undo_last_checkpoint(self):
         """Revert the workspace to the state before the newest agent auto-checkpoint.
 

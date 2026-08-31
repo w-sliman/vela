@@ -1,6 +1,68 @@
 # Changelog
 
+This project is **unreleased**: nothing here has been published or tagged, and the
+version headings below record development history rather than shipped releases.
+
 ## Unreleased
+
+### Fixes & hardening (code dive, round 2)
+- **Command output could lose its tail.** The reader thread was joined for 0.2s after
+  the process exited; when the consumer lagged the process — which it does, since the
+  REPL prints each line through Rich — the remainder was dropped and the model reasoned
+  from a truncated view of its own test output. The join now allows a real grace period,
+  and the reader tolerates the pipe closing underneath it.
+- **Edit approval asked before validating.** With `CODER_APPROVAL_EDITS=1`, `write_file`
+  prompted for a diff and only then checked size, truncation marker, and `expected_hash`
+  — so a stale hash cost the user a decision on an edit that could never apply.
+  Preconditions moved into `Workspace.preflight_write()` and run first.
+- **Model-supplied `run_command` timeouts are clamped** to 1..`CODER_COMMAND_TIMEOUT`.
+  They were previously passed through unbounded, so one bad value could hang the REPL.
+- **`memory.prune` selected records by value.** `r not in stale` compared whole records:
+  O(n²), and two records legitimately holding identical text were both dropped when only
+  one should be. Selection is now positional. `consolidate` no longer collapses a merged
+  record's date span to `''` when a member lacks a timestamp.
+- **`list_files` announces its cap.** The 1000-entry limit was applied silently, so a
+  partial listing read as a complete one — the same failure shape as the truncated-read
+  bug above. It now returns a `truncated` flag and advice to narrow the query.
+- **Dead code removed**: `Git.undo_last()` (superseded by the checkpoint-scoped
+  `undo_last_checkpoint()` the CLI actually calls, and covered by its tests), and the
+  unused `workspace` parameter on `classify_command()` — classification is purely
+  lexical; path containment lives in `ensure_within`.
+- 17 new tests, including a deterministic regression guard for the output-drain race
+  (it fails against the previous bound rather than depending on machine timing).
+
+### Fixes & hardening (code dive)
+- **The package did not parse on Python 3.11** despite `requires-python = ">=3.11"`,
+  a "Python 3.11+" README, and Windows setup instructions that say `py -3.11`.
+  `llm.py` used a backslash escape inside an f-string expression — legal only from
+  3.12 (PEP 701) — making the whole module unimportable on the advertised floor
+  version. CI tested 3.12 only, so it never surfaced. Fixed, and CI now runs a
+  3.11 + 3.12 matrix.
+- **Truncated reads can no longer silently destroy files.** `read_file` bounds content at
+  `CODER_MAX_FILE_CHARS` but hashes the *whole* file, so echoing a truncated view back
+  through `write_file` passed the stale-hash guard and dropped the tail. `read_file` now
+  returns a `truncated` flag plus a warning, and `write_file` refuses any content carrying
+  the truncation marker.
+- **`apply_patch` accepts blank context lines without a trailing space.** A blank context
+  line is canonically `' \n'`, but most producers strip the trailing space; the bare `'\n'`
+  form was rejected as an "unsupported patch line", failing patches against any file with
+  blank lines in the hunk.
+- **Policy: host-sensitive path detection widened** from `/home /root /etc /var /usr /opt`
+  to also cover `/proc /sys /boot /dev /mnt /media /srv /run /tmp /lib /bin /sbin` and bare
+  `/`. `cat /proc/self/environ` and `ls /` previously classified as allowed read-only
+  development commands.
+- Auto-compact failures no longer abort the user's request: a failed summarizer call
+  degrades to "not compacted" (journaled) and the turn proceeds under ordinary trimming.
+- Engineering conventions restructured around the project's invariants; the system
+  prompt and docs follow.
+- Docs corrected against the code: `SECURITY.md` no longer describes the allow-list as
+  "read-only" (it includes `python`/`pytest`, which execute workspace code); `README.md`
+  layout and LLM sections rewritten (dual transport, 26 modules, not 9); `EDITING.md` and
+  `ARCHITECTURE.md` now state that the transport fallback discards conversation history.
+- `.env.example` documents `CODER_APPROVAL_EDITS` and `GITHUB_TOKEN`; the per-turn status
+  line no longer prints the context window twice in two formats.
+- 13 new tests (truncation guard, patch blank lines, widened policy + no-false-positive
+  regression).
 
 ### Fixes & hardening
 - `/usage` no longer crashes with `NameError` (undefined `win`); the context-fill line renders again.

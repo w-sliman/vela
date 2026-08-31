@@ -152,23 +152,27 @@ class ProjectMemory:
             self._write(d)
     def prune(self,max_records=None,ttl_days=0):
         """Deterministic cleanup: drop records untouched longer than ttl_days (when >0),
-        then lowest-hits/oldest-last_seen until within max_records. Returns removed ids."""
+        then lowest-hits/oldest-last_seen until within max_records. Returns removed ids.
+
+        Selection is by position, never by value: two records may legitimately hold
+        identical text, and comparing whole dicts would drop both (and cost O(n^2)).
+        """
         with self._locked():
-            d=self.load();recs=list(d['records']);removed=[]
+            d=self.load();recs=list(d['records']);drop=set()
             if ttl_days and recs:
                 try:cutoff=datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(days=float(ttl_days))
                 except ValueError:cutoff=None
                 if cutoff is not None:
-                    stale=[r for r in recs if _rtime(r)<cutoff]
-                    if stale:
-                        recs=[r for r in recs if r not in stale];removed+=[str(r['id']) for r in stale]
-            if max_records is not None and len(recs)>int(max_records):
-                cap=int(max_records)
-                order=sorted(range(len(recs)),key=lambda i:(int(recs[i].get('hits',0)),str(recs[i].get('last_seen',''))))
-                drop=set(order[:len(recs)-cap])
-                removed+=[str(recs[i]['id']) for i in sorted(drop)]
-                recs=[r for i,r in enumerate(recs) if i not in drop]
-            if removed:d['records']=recs;self._write(d)
+                    drop={i for i,r in enumerate(recs) if _rtime(r)<cutoff}
+            if max_records is not None:
+                cap=max(0,int(max_records));keep=[i for i in range(len(recs)) if i not in drop]
+                if len(keep)>cap:
+                    coldest=sorted(keep,key=lambda i:(int(recs[i].get('hits',0)),str(recs[i].get('last_seen','')),i))
+                    drop.update(coldest[:len(keep)-cap])
+            if not drop:return []
+            removed=[str(recs[i].get('id','')) for i in sorted(drop)]
+            d['records']=[r for i,r in enumerate(recs) if i not in drop]
+            self._write(d)
             return removed
     def consolidate(self,groups):
         """Apply upstream-proposed merges: primary id keeps identity, text/kind replaced,
@@ -185,8 +189,11 @@ class ProjectMemory:
                 prim['tags']=list(dict.fromkeys([str(t) for t in (g.get('tags') if g.get('tags') is not None else sum((m.get('tags',[]) for m in members),[]))]))
                 prim['paths']=list(dict.fromkeys([str(p) for p in (g.get('paths') if g.get('paths') is not None else sum((m.get('paths',[]) for m in members),[]))]))
                 prim['hits']=sum(int(m.get('hits',0)) for m in members)
-                prim['created']=min(str(m.get('created','')) for m in members)
-                prim['last_seen']=max(str(m.get('last_seen','')) for m in members)
+                created=[str(m['created']) for m in members if m.get('created')]
+                seen=[str(m['last_seen']) for m in members if m.get('last_seen')]
+                # A member with no timestamp must not collapse the span to ''.
+                if created:prim['created']=min(created)
+                if seen:prim['last_seen']=max(seen)
                 for m in members[1:]:
                     if m in recs:recs.remove(m);removed.append(str(m['id']))
                 merged.append(str(prim['id']))

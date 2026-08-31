@@ -41,8 +41,13 @@ The central design principle is: **the LLM proposes; deterministic Python execut
 - `providers.py`: thin OpenAI-compatible client wrapper (responses / chat / chat_stream).
 - `tools.py`: tool schemas (single source of truth for validation) and deterministic dispatcher; per-edit git checkpoints hook in here.
 - `workspace.py`: path-safe filesystem operations (symlink-resolving containment).
-- `shell.py`: subprocess execution; merged output stream, timeouts, output limits, secret-scrubbed child environment.
-- `policy.py`: command classification (allow-list + compound/inline-exec/install/destructive-find gates) and path containment.
+- `shell.py`: subprocess execution; merged output stream, timeouts, output limits,
+  secret-scrubbed child environment. Output is drained by a reader thread that is
+  given a real grace period after the process exits — a short bound truncated the
+  tail whenever the consumer (a Rich print per line) lagged the process.
+- `policy.py`: command classification (allow-list + compound/inline-exec/install/
+  destructive-find/host-path gates) and path containment. Classification is purely
+  lexical; *path* containment is enforced separately by `ensure_within`.
 - `editor.py`: unified-diff application, exact/fuzzy/line-range replacement, closest-match error hints.
 - `search.py`: regex text search plus AST-based Python symbol index.
 - `context.py`: pair-aware history blocks and trimming (tool-call pairs never split).
@@ -50,7 +55,11 @@ The central design principle is: **the LLM proposes; deterministic Python execut
 - `session.py`: UTC-stamped JSONL session traces (user/tool_call/tool_result/usage/error/compact/assistant events).
 - `git.py`: repo bootstrap, per-edit snapshots, undo, status/diff/checkpoint.
 - `resume.py`: session-trace index, `/resume` ref resolution (index/prefix), and mechanical digest construction from traces.
+- `memory.py` curation selects records by position rather than by value, so records
+  with identical text are pruned individually rather than as a group.
 - `memory.py`, `events.py`, `ui.py`, `agents.py`, `json_repair.py`, `prompts.py`, `config.py`: persistent memory with lexical retrieval/scoring, event bus, rendering, sub-agent delegation, defensive tool-JSON parsing, system prompt, environment configuration.
+- `browser.py`, `github.py`, `sandbox.py`: opt-in integrations, all disabled unless
+  explicitly enabled by environment (`CODER_ENABLE_BROWSER` / `_GITHUB` / `_SANDBOX`).
 
 ## Tool loop
 
@@ -88,4 +97,11 @@ together). Trimming drops whole leading blocks under char/item budgets;
 `/compact` replaces older turns with an LLM-written summary whose retention
 window the summarizer itself chooses (clamped 1–5 turns). Auto-compact fires
 once per request when the last prompt exceeds `CODER_AUTO_COMPACT_PCT` of
-`CODER_CONTEXT_WINDOW`.
+`CODER_CONTEXT_WINDOW`; if the summarizer call itself fails, the request continues
+uncompacted (bounded by ordinary trimming) rather than failing.
+
+Two failure paths deliberately trade context for progress rather than raising:
+auto-compact as above, and the `auto`-mode transport fallback, which restarts the
+conversation from the current request plus a corrective instruction when a server
+rejects a tool call before returning a response. Both are journaled to the session
+trace; project memory is what carries knowledge across either.
