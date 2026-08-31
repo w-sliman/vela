@@ -40,6 +40,11 @@ OPENAI_MODEL=...
 
 Never commit `.env`.
 
+You do not normally need to set `CODER_CONTEXT_WINDOW`: the agent probes local
+servers that report their window and otherwise learns the real limit from the first
+rejection, caching it per endpoint and model. Set it only to skip the probe — a
+server rejection still overrides it.
+
 Every knob is documented inline in `.env.example` — approval mode, context
 window size (drives the context budget and the live context-% display),
 context reduction, streaming,

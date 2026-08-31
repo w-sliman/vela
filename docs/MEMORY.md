@@ -1,17 +1,21 @@
 # Project Memory
 
-The agent has three different kinds of state:
+The agent has four different kinds of state:
 
 1. **Workspace** — source files are the authoritative state.
 2. **Persistent project memory** — `.coder-agent/memory.json` stores durable facts, decisions, and preferences as records (`id`, `kind`, `text`, `tags`, `paths`, `created`, `last_seen`, `hits`). The `remember` tool writes it (optional `tags`/`paths` sharpen retrieval), `recall_memory` reads all records, and `forget_memory` deletes by id prefix. Exact duplicates update `last_seen` instead of piling up. Legacy bucket-format files are migrated automatically. Memory is advisory; current files and tool results always win.
-3. **Session memory** — `.coder-agent/sessions/*.jsonl` records what happened in a run: user requests, tool calls/results, per-model-call exact token `usage`, transport `error`s, `compact`ions, timings, and assistant responses. It is primarily for continuity (`/sessions`, `/resume`), debugging, and after-the-fact review.
+3. **Learned endpoint facts** — `.coder-agent/windows.json` caches each
+   (endpoint, model)'s real context window once a server has stated it, so the one
+   rejected request that taught it is not repaid every session. Delete it to relearn.
+4. **Session memory** — `.coder-agent/sessions/*.jsonl` records what happened in a run: user requests, tool calls/results, per-model-call exact token `usage`, transport `error`s, `compact`ions, timings, and assistant responses. It is primarily for continuity (`/sessions`, `/resume`), debugging, and after-the-fact review. Window discovery journals a `context_window` event here too.
 
-The active LLM context is bounded one way: before every request the outgoing payload is measured against the context budget (`CODER_CONTEXT_WINDOW` minus reply headroom) and the conversation is reduced until it fits — summarizing older turns, and dropping the oldest only if summarizing fails. `/compact [focus]` runs the same summarization on demand. See `docs/ARCHITECTURE.md`.
+The active LLM context is bounded one way: before every request the outgoing payload is measured against the context budget (the model's context window — probed or learned, see `docs/ARCHITECTURE.md` — minus reply headroom) and the conversation is reduced until it fits — summarizing older turns, and dropping the oldest only if summarizing fails. `/compact [focus]` runs the same summarization on demand. See `docs/ARCHITECTURE.md`.
 
 A good mental model is:
 
 **workspace = truth**  
 **project memory = durable knowledge**  
+**windows.json = what the endpoint told us about itself**  
 **session logs = event history**  
 **LLM context = temporary working memory**
 

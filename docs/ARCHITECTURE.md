@@ -57,6 +57,7 @@ The central design principle is: **the LLM proposes; deterministic Python execut
   lexical; *path* containment is enforced separately by `ensure_within`.
 - `editor.py`: unified-diff application, exact/fuzzy/line-range replacement, closest-match error hints.
 - `search.py`: regex text search plus AST-based Python symbol index.
+- `window.py`: learns the model's context window — rejection first, local-server probe second, configuration last; caches per endpoint+model.
 - `budget.py`: the single owner of "does this payload fit?" — token estimation with self-calibration, pair-aware blocks, and the two reductions (summarize, then drop).
 - `telemetry.py`: exact usage extraction from both API naming conventions, metrics, timers.
 - `session.py`: UTC-stamped JSONL session traces (user/tool_call/tool_result/usage/error/compact/assistant events).
@@ -149,8 +150,39 @@ send(payload)
 - **The limit is derived, not tuned.** It is the window minus headroom for the reply
   (`CODER_REPLY_RESERVE_TOKENS`, default window/8), rather than a percentage someone
   picked. Headroom is capped at half the window so it can never swallow it.
-- **An unknown window means no enforcement.** `CODER_CONTEXT_WINDOW` must match your
-  model for the budget to bind.
+### Knowing the window
+
+The budget needs the model's context window, and there is no portable way to ask for
+it. OpenAI, DeepSeek, Kimi and GLM report nothing useful from `/v1/models`; Anthropic
+and Gemini expose it only on native APIs this OpenAI-compatible client never speaks.
+Hardcoding a model→window table is the usual workaround and is stale the day it ships.
+
+So the window is learned, from three sources in descending authority:
+
+1. **A rejection.** A server refusing an oversized request states its real limit
+   (`"maximum context length is 8192 tokens"`). Parsing that is provider-agnostic,
+   costs one failed request once per model, and is ground truth. It overrides even an
+   explicit `CODER_CONTEXT_WINDOW` — observation outranks configuration, because the
+   server is not wrong about its own ceiling. Learned values are cached per
+   (endpoint, model) in `.coder-agent/windows.json`.
+2. **A probe** of local servers that do report it, tried at startup unless the window
+   was set by hand: vLLM's `max_model_len` on `/v1/models`, llama.cpp's
+   `default_generation_settings.n_ctx` on `/props`, Ollama's `num_ctx` from
+   `/api/show`. Whichever endpoint answers also identifies the backend, so nothing
+   needs to be configured to say which to try. A connection failure aborts the sweep
+   rather than paying three timeouts against a host that is down.
+3. **Configuration**, as the starting assumption.
+
+Two deliberate refusals, both because a wrong window is worse than an unknown one —
+it silently disables reduction and the request is rejected anyway:
+
+- Ollama's `model_info["<arch>.context_length"]` is **not** used as a fallback. That
+  is the model's maximum, not what Ollama serves; its real default is far smaller.
+- A limit is never inferred when the rejection does not state one. llama.cpp reports
+  overflow with no number; the agent sheds a block and retries instead of guessing.
+
+The resolved window and its source are journaled as a `context_window` event, printed
+at startup when it was not simply configured, and shown by `/model`.
 
 `/compact [focus]` invokes the same summarization by hand; the summarizer chooses how
 many recent turns stay verbatim (clamped 1–5). Every automatic reduction is journaled

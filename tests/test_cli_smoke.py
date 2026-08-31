@@ -8,6 +8,7 @@ def test_cli_slash_commands_smoke(monkeypatch, capsys, tmp_path):
     """Drive the REPL non-interactively: banner, /help, /pwd, /tree, /usage, /quit."""
     monkeypatch.setenv('OPENAI_API_KEY', 'dummy-key')
     monkeypatch.setenv('OPENAI_MODEL', 'dummy-model')
+    monkeypatch.setenv('CODER_CONTEXT_WINDOW', '128000')   # explicit -> no startup probe
     monkeypatch.setattr(sys, 'stdin', io.StringIO('/help\n/pwd\n/tree\n/usage\n/continue\n/quit\n'))
     monkeypatch.setattr(sys, 'argv', ['coding_agent', '--workspace', str(tmp_path)])
     main()
@@ -31,6 +32,7 @@ def test_cli_sessions_and_resume(monkeypatch, capsys, tmp_path):
     (d / '20260101-000000-000000.jsonl').write_text(json.dumps(ev) + '\n')
     monkeypatch.setenv('OPENAI_API_KEY', 'dummy-key')
     monkeypatch.setenv('OPENAI_MODEL', 'dummy-model')
+    monkeypatch.setenv('CODER_CONTEXT_WINDOW', '128000')   # explicit -> no startup probe
     monkeypatch.setattr(sys, 'stdin', io.StringIO('/sessions\n/resume\n/resume #9\n/quit\n'))
     monkeypatch.setattr(sys, 'argv', ['coding_agent', '--workspace', str(tmp_path)])
     main()

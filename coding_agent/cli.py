@@ -46,6 +46,8 @@ def main():
     ctx=ToolContext(c,ws,shell,approval,Git(c.workspace),Browser(c.enable_browser),GitHub(c.enable_github),DockerSandbox(c.workspace,c.enable_sandbox),lambda line: console.print(f'[dim]{line.rstrip()}[/dim]'),Delegator(c, f'Workspace: {c.workspace}'),EventBus(debug_ui.event),on_tool_result=debug_ui.tool_result);show_banner(c)
     if not c.api_key or not c.model: console.print(Panel('Configure OPENAI_API_KEY and OPENAI_MODEL in .env.',title='LLM configuration required',border_style='red'));raise SystemExit(2)
     agent=CodingAgent(c,ctx,session,EventBus(debug_ui.event))
+    if agent.window_source!='configured':
+        console.print(f'[dim]context window: {agent.budget.window:,} tokens ({agent.window_source})[/dim]')
     if a.plan: console.print(Markdown(agent.run('Create an implementation plan for this repository. Do not edit files.').text));return
     while True:
         try:text=Prompt.ask('[bold green]you[/bold green]').strip()
@@ -61,7 +63,9 @@ def main():
             if text=='/tree':console.print('\n'.join(ws.list_files()));continue
             if text=='/model':
                 extra='' if agent.mode==c.api_mode else f', now {agent.mode}'
-                console.print(f'{c.model} @ {c.base_url or "OpenAI default"} ({c.api_mode}{extra})');continue
+                console.print(f'{c.model} @ {c.base_url or "OpenAI default"} ({c.api_mode}{extra})')
+                console.print(f'[dim]context window: {agent.budget.window:,} tokens ({agent.window_source}), '
+                              f'{agent.budget.limit:,} usable after reply headroom[/dim]');continue
             if text=='/usage':
                 m=agent.metrics;win=c.context_window_tokens;m.price(c.price_input_per_million,c.price_output_per_million)
                 avg=(m.latency_ms/m.calls) if m.calls else 0.0

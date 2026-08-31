@@ -13,6 +13,7 @@ class Config:
     price_input_per_million:float=0.0; price_output_per_million:float=0.0; context_window_tokens:int=128000
     request_retries:int=2; auto_compact:bool=True
     reply_reserve_tokens:int=0        # 0 -> ContextBudget picks window//8
+    context_window_explicit:bool=False  # set by hand -> skip probing (a rejection still wins)
     stream_chat:bool=True; auto_checkpoint:bool=True
     memory_inject:bool=True; memory_top_k:int=4; memory_max_chars:int=1500; memory_min_score:float=0.5
     memory_distill:bool=True
@@ -38,6 +39,7 @@ class Config:
           int(os.getenv('CODER_CONTEXT_WINDOW','128000')),
           int(os.getenv('CODER_REQUEST_RETRIES','2')),os.getenv('CODER_AUTO_COMPACT','1')!='0',
           int(os.getenv('CODER_REPLY_RESERVE_TOKENS','0')),
+          bool(os.getenv('CODER_CONTEXT_WINDOW')),
           os.getenv('CODER_STREAM','1')!='0',os.getenv('CODER_AUTO_CHECKPOINT','1')!='0',
           os.getenv('CODER_MEMORY_INJECT','1')!='0',int(os.getenv('CODER_MEMORY_TOPK','4')),int(os.getenv('CODER_MEMORY_MAX_CHARS','1500')),float(os.getenv('CODER_MEMORY_MIN_SCORE','0.5')),
           os.getenv('CODER_MEMORY_DISTILL','1')!='0',

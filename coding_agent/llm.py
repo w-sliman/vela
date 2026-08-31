@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from .providers import OpenAICompatibleProvider
 from .prompts import SYSTEM_PROMPT
 from .budget import ContextBudget,payload_chars
+from .window import WindowStore,looks_like_overflow,parse_limit,resolve as resolve_window
 from .telemetry import Metrics,Timer,extract_usage,USAGE_ADVICE
 from .tools import dispatch,tool_schemas
 from .json_repair import parse_tool_arguments
@@ -128,8 +129,12 @@ class CodingAgent:
         if not config.model: raise RuntimeError('OPENAI_MODEL is not configured. Add it to .env.')
         self.config=config;self.context=context;self.session=session;self.events=events or EventBus()
         self.history=[];self.metrics=Metrics()
-        self.budget=ContextBudget(config.context_window_tokens,
-                                  reserve_tokens=config.reply_reserve_tokens or None)
+        self.windows=WindowStore(config.workspace)
+        window,source=resolve_window(config,self.windows)
+        self.window_source=source
+        self.budget=ContextBudget(window,reserve_tokens=config.reply_reserve_tokens or None)
+        if source!='configured':
+            self.session.record('context_window',{'tokens':window,'source':source})
         self.memory=MemoryInjector(config,session)
         self._turn_memory=None;self._gate_nudged=False;self._edited_since_check=False
         self.provider=OpenAICompatibleProvider(config.api_key,config.base_url)
@@ -389,6 +394,40 @@ class CodingAgent:
                                            'edited_since_check':self._edited_since_check})
         self.history.append(UserMsg(text=VERIFY_GATE_MSG))
         return True
+    def _learn_window_from(self,exc):
+        """Adopt the context limit a rejection stated, if it stated one.
+
+        Ground truth beats every other source, including an explicit
+        CODER_CONTEXT_WINDOW: the server is not wrong about its own ceiling. The
+        value is cached per (endpoint, model) so this failed request is paid once,
+        not once per session. Returns True when the request is worth retrying.
+        """
+        text=f'{exc}'
+        limit=parse_limit(text)
+        if limit is None:
+            if looks_like_overflow(text):
+                # Known shape, unparseable number: shrinking blind beats looping.
+                self.session.record('context_window',{'source':'overflow_unparsed','message':text[:300]})
+                self.events.emit('info','context overflow reported without a limit; reducing and retrying')
+                return self._force_reduction()
+            return False
+        if limit==self.budget.window:return self._force_reduction()
+        previous=self.budget.window
+        self.budget=ContextBudget(limit,reserve_tokens=self.config.reply_reserve_tokens or None,
+                                  chars_per_token=self.budget.chars_per_token)
+        self.window_source='learned'
+        self.windows.remember(self.config.base_url,self.config.model,limit)
+        self.session.record('context_window',{'tokens':limit,'source':'learned','previous':previous})
+        self.events.emit('info',f'context window learned from the server: {previous} → {limit} tokens')
+        return True
+    def _force_reduction(self):
+        """Shed one block when the budget already believes the payload fits.
+
+        Reached when the server rejects something our estimate accepted — the
+        estimate is wrong, so make room rather than resending the same payload.
+        """
+        if not self.budget.reducible(self.history):return False
+        return self._reduce_by_dropping(self.budget.estimate(self.transport.encode(self.history)))
     def _next_transport(self):
         """The next transport to try after the current one failed, or None."""
         try:i=self._transports.index(self.transport)
@@ -407,6 +446,9 @@ class CodingAgent:
             self.events.emit('error','model request failed',error=str(exc))
             self.session.record('error',{'stage':'model_request','transport':self.transport.name,
                                          'message':str(exc)})
+            # An oversized payload is not a transport problem — every transport
+            # would be rejected identically. Learn the real ceiling and retry.
+            if self._learn_window_from(exc):return None
             nxt=self._next_transport()
             if nxt is None:raise
             self.session.record('transport_fallback',{'from':self.transport.name,'to':nxt.name,

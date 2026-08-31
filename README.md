@@ -106,8 +106,12 @@ review this repository for correctness issues; do not modify files
 - Assistant text streams live as tokens (chat transport; `CODER_STREAM=0` disables).
 - Every model call journals an exact `usage` event (input/output tokens) to the session trace; calls without server-reported usage are counted and flagged, never estimated.
 - A live status line shows tokens in/out/total plus current context fill after each model turn; `/usage` shows session totals.
+- The context window is worked out rather than assumed: probed from local servers
+  that report it (vLLM, llama.cpp, Ollama), otherwise learned from the first
+  oversized-request rejection and cached per endpoint+model. A server's stated limit
+  overrides configuration.
 - Before every request the outgoing payload is measured against the context budget
-  (`CODER_CONTEXT_WINDOW` minus reply headroom) and the conversation is reduced until
+  (that window minus reply headroom) and the conversation is reduced until
   it fits — summarizing older turns, dropping the oldest only if summarizing fails.
   Token estimates self-calibrate from any usage the server reports. `CODER_AUTO_COMPACT=0`
   disables reduction.
@@ -179,6 +183,7 @@ coding_agent/
   editor.py      # unified diffs, exact/fuzzy/line-range replacement
   search.py      # regex search + AST symbol index
   budget.py      # context budget: measure the payload, reduce until it fits
+  window.py      # learn the context window: rejection, probe, then config
   memory.py      # persistent records, lexical scoring, curation
   resume.py      # trace index and digest construction
   telemetry.py   # exact usage extraction, metrics, timers

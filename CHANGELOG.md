@@ -5,6 +5,40 @@ version headings below record development history rather than shipped releases.
 
 ## Unreleased
 
+### The context window is learned, not assumed
+- **`CODER_CONTEXT_WINDOW=128000` was an unsafe default.** Point the agent at a 32k
+  model and the budget believed it had 128k, so it never reduced and the request was
+  rejected anyway. The window is now worked out rather than assumed.
+- **Learned from a rejection (primary).** A server refusing an oversized request
+  states its real limit; that is parsed, adopted, cached per (endpoint, model) in
+  `.coder-agent/windows.json`, and the request retried. Provider-agnostic — it works
+  for OpenAI, DeepSeek, Kimi and GLM, none of which expose the window any other way —
+  and it costs one failed request once per model rather than once per session.
+  A learned limit overrides even an explicit `CODER_CONTEXT_WINDOW`: observation
+  outranks configuration, because the server is not wrong about its own ceiling.
+- **Probed at startup (secondary)** for the local servers that do report it, unless
+  the window was set by hand: vLLM `max_model_len` on `/v1/models`, llama.cpp
+  `default_generation_settings.n_ctx` on `/props`, Ollama `num_ctx` from `/api/show`.
+  Field names verified against vLLM PR #4643, the llama-server endpoint docs and the
+  Ollama API reference. Whichever endpoint answers identifies the backend, so no
+  configuration says which to try; a connection failure aborts the sweep instead of
+  paying three timeouts to a host that is down.
+- **Two deliberate refusals**, both because a wrong window is worse than an unknown
+  one: Ollama's `model_info["<arch>.context_length"]` is never used as a fallback (it
+  is the model's maximum, not what Ollama serves), and no limit is invented when a
+  rejection does not state one — llama.cpp reports overflow with no number, so the
+  agent sheds a block and retries rather than guessing.
+- Context overflow is handled before transport fallback: an oversized payload is not
+  a transport problem, and every transport would reject it identically.
+- The resolved window and its source are journaled as `context_window`, shown at
+  startup when not simply configured, and reported by `/model`.
+- No `CODER_BACKEND`-style knob: the probe that answers already identifies the
+  backend, so declaring it in advance would add a way to be wrong without adding
+  information.
+- 33 new tests, weighted toward the negative cases — an unrelated 401 must not shrink
+  the budget, the request size in a rejection must never be mistaken for the limit,
+  and junk values from a server must not corrupt the estimate.
+
 ### Context budget: one owner for "does this payload fit?"
 - **Three mechanisms were guessing independently.** A char-budget `trim` ran every
   turn, a once-per-request auto-compact read the *previous* call's reported usage, and

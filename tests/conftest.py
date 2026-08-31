@@ -15,6 +15,8 @@ DEFAULTS = dict(
     approval_mode='prompt', max_tool_output=5000, max_file_chars=30000, command_timeout=10,
     enable_browser=False, enable_github=False, enable_sandbox=False, telemetry=True, debug=False,
     context_window_tokens=128000, request_retries=0, stream_chat=False, auto_checkpoint=False,
+    # Tests state their window, so startup never probes a server that isn't there.
+    context_window_explicit=True,
 )
 
 
