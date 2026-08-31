@@ -3,7 +3,7 @@ import json,re,time
 from dataclasses import dataclass
 from .providers import OpenAICompatibleProvider
 from .prompts import SYSTEM_PROMPT
-from .context import ContextManager
+from .budget import ContextBudget,payload_chars
 from .telemetry import Metrics,Timer,extract_usage,USAGE_ADVICE
 from .tools import dispatch,tool_schemas
 from .json_repair import parse_tool_arguments
@@ -100,7 +100,7 @@ class MemoryInjector:
     """Lexical per-turn recall: picks relevant project memories once per user request.
 
     The block is attached to outgoing model payloads (never persisted into history),
-    so trimming/pair integrity are untouched; memory failures never break a request.
+    so reduction/pair integrity are untouched; memory failures never break a request.
     """
     HEADER=('[project memory] Advisory recall from prior sessions — may be stale; '
             'current workspace files always win. Context only, do not respond to this.')
@@ -128,8 +128,9 @@ class CodingAgent:
         if not config.model: raise RuntimeError('OPENAI_MODEL is not configured. Add it to .env.')
         self.config=config;self.context=context;self.session=session;self.events=events or EventBus()
         self.history=[];self.metrics=Metrics()
-        self.ctx=ContextManager(config.max_context_chars,config.max_history_items)
-        self._auto_compact_attempted=False;self.memory=MemoryInjector(config,session)
+        self.budget=ContextBudget(config.context_window_tokens,
+                                  reserve_tokens=config.reply_reserve_tokens or None)
+        self.memory=MemoryInjector(config,session)
         self._turn_memory=None;self._gate_nudged=False;self._edited_since_check=False
         self.provider=OpenAICompatibleProvider(config.api_key,config.base_url)
     @property
@@ -250,7 +251,6 @@ class CodingAgent:
         focus_line=f'Focus for this compaction: {focus}\n' if focus else ''
         return (f'{focus_line}Transcript (oldest first):\n{blob}\n\n'
                 'Return ONLY JSON: {"summary": "...", "keep_last_turns": <int 1-5>, "memories": [{"kind": "...", "text": "..."}]}')
-    def _trim(self): self.history=self.ctx.trim(self.history)
     def _advisory_blocks(self):
         """Blocks attached to the outgoing payload but never persisted into history:
         this turn's memory recall and the current todo queue."""
@@ -296,21 +296,56 @@ class CodingAgent:
                 last=exc
                 self.events.emit('info',f'request attempt {i+1} failed: {type(exc).__name__}: {str(exc)[:120]}')
         raise last
-    def _maybe_auto_compact(self):
-        """Compact automatically once per user request when context crosses the threshold."""
-        cfg=self.config
-        if not cfg.auto_compact or self._auto_compact_attempted:return
-        win=cfg.context_window_tokens;last=self.metrics.last_input_tokens
-        if not win or not last or last/win*100<cfg.auto_compact_pct:return
-        self._auto_compact_attempted=True
-        # A summarizer failure must not take the user's request down with it:
-        # degrade to "not compacted" and let normal trimming bound the context.
+    def _fit_to_budget(self):
+        """Reduce the conversation until the payload we are about to send fits.
+
+        Progress is measured, never assumed: a summary can be as large as the turns
+        it replaced, so a reduction that reports success but frees nothing is treated
+        as a failure and the blunter method is tried instead. Without that check the
+        loop can spin forever on a conversation compaction cannot shrink.
+        """
+        advisory=self._advisory_blocks()
+        payload=self.transport.encode(self.history,advisory)
+        if not self.config.auto_compact:return payload
+        while not self.budget.fits(payload) and self.budget.reducible(self.history):
+            smaller=self._reduce_once(advisory,self.budget.estimate(payload))
+            if smaller is None:break
+            payload=smaller
+        return payload
+    def _reduce_once(self,advisory,before):
+        """One reduction, preferring the method that keeps knowledge.
+
+        Returns the re-encoded payload once it is genuinely smaller, or None when
+        the conversation cannot be reduced any further.
+        """
+        for method in (self._reduce_by_compaction,self._reduce_by_dropping):
+            if not method(before):continue
+            payload=self.transport.encode(self.history,advisory)
+            if self.budget.estimate(payload)<before:return payload
+        return None
+    def _reduce_by_compaction(self,before):
+        """Summarize the older turns. False when unavailable or it fails."""
         try:res=self.compact()
         except Exception as exc:
-            self.events.emit('info',f'auto-compact failed, continuing untrimmed: {type(exc).__name__}')
-            self.session.record('error',{'stage':'auto_compact','message':str(exc)});return
-        if res.get('compacted'):
-            self.events.emit('info',f"auto-compact: {res['turns_removed']} turn(s) summarized, kept last {res['turns_kept']}")
+            self.events.emit('info',f'compaction failed, dropping oldest turns instead: {type(exc).__name__}')
+            self.session.record('error',{'stage':'budget_compact','message':str(exc)})
+            return False
+        if not res.get('compacted'):return False
+        self.events.emit('info',f"compacted to fit context: {res['turns_removed']} turn(s) "
+                                f"summarized, kept last {res['turns_kept']}")
+        self.session.record('budget_reduced',{'method':'compact','estimated_tokens':before,
+                                              'limit':self.budget.limit,
+                                              'turns_removed':res['turns_removed'],
+                                              'turns_kept':res['turns_kept']})
+        return True
+    def _reduce_by_dropping(self,before):
+        """Lossy fallback: discard the oldest whole block."""
+        self.history,dropped=self.budget.drop_oldest(self.history)
+        if not dropped:return False
+        self.events.emit('info',f'context budget: dropped {dropped} oldest item(s)')
+        self.session.record('budget_reduced',{'method':'drop_oldest','items':dropped,
+                                              'estimated_tokens':before,'limit':self.budget.limit})
+        return True
     def _emit_usage(self,u):
         """Publish per-turn token/context usage for live display."""
         if u is not None:
@@ -323,10 +358,11 @@ class CodingAgent:
         self.session.record('user',{'text':user_text});self.history.append(UserMsg(text=user_text))
         self._turn_memory=self.memory.build(user_text,self.history[:-1])
         self._gate_nudged=False;self._edited_since_check=False
-        self._auto_compact_attempted=False;self.streamed_any=False
+        self.streamed_any=False
         try:
-            for _ in range(self.config.max_turns):
-                self._maybe_auto_compact()
+            # No turn cap: the conversation is bounded by the context budget, and a
+            # long task is a long task. Ctrl+C pauses; the budget keeps payloads legal.
+            while True:
                 result=self._step()
                 if result is not None:
                     if self._verify_gate_should_nudge():continue
@@ -334,8 +370,6 @@ class CodingAgent:
                     self.events.emit('done','model response')
                     return AgentResult(result,self.metrics.tool_calls,self.metrics.as_dict(),
                                        streamed=getattr(self,'streamed_any',False))
-                self._trim()
-            raise RuntimeError(f'agent exceeded {self.config.max_turns} controller turns')
         except KeyboardInterrupt:
             # Cooperative pause: close any dangling tool-call pair so history stays
             # valid, journal it, and surface a typed exception the REPL catches.
@@ -384,13 +418,21 @@ class CodingAgent:
             return None
         return self._consume(reply)
     def _send(self):
+        """Fit the conversation to the budget, send it, then calibrate the estimate.
+
+        The payload measured here is the payload sent — the transport encodes it once
+        and hands the same object to the provider, so there is no gap between what we
+        sized and what the server received.
+        """
+        payload=self._fit_to_budget()
+        sent_chars=payload_chars(payload)
         with Timer() as timer:
-            reply=self._with_retries(lambda:self.transport.send(
-                self.history,self._advisory_blocks(),tool_schemas(),
-                on_token=lambda t:self.events.emit('token','stream',text=t)))
+            reply=self._with_retries(lambda:self.transport.send_payload(
+                payload,tool_schemas(),on_token=lambda t:self.events.emit('token','stream',text=t)))
         self.metrics.add(reply.raw_usage,timer.elapsed_ms)
         self.session.record('usage',reply.usage if reply.usage is not None
                             else {'available':False,'advice':USAGE_ADVICE})
+        if reply.usage:self.budget.calibrate(sent_chars,reply.usage.get('input'))
         self._emit_usage(reply.usage)
         return reply
     def _consume(self,reply):

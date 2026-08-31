@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from coding_agent.config import Config
+from tests.conftest import make_config
 from coding_agent.llm import CodingAgent, PauseInterrupt
 from coding_agent.conversation import INTERRUPTED, AssistantMsg, ToolCall, ToolResult, UserMsg
 from coding_agent.session import Session
@@ -11,9 +11,7 @@ from tests.test_verify_gate import Scripted, tool_call
 
 
 def cfg(tmp_path):
-    return Config('test-key', 'http://localhost:9/v1', 'model-x', 'chat', tmp_path,
-                  'prompt', 5000, 30000, 10, 10, 20, 100, 10000, False, False, False,
-                  True, False, 0.0, 0.0, 128000, stream_chat=False)
+    return make_config(tmp_path, price_input_per_million=0.0, price_output_per_million=0.0)
 
 
 def make(tmp_path, responses, context=None):

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone as tz
 from types import SimpleNamespace as NS
 
 from coding_agent.config import Config
+from tests.conftest import make_config
 from coding_agent.conversation import AssistantMsg, ToolCall, ToolResult
 from coding_agent.llm import CodingAgent, _recent_paths
 from coding_agent.memory import ProjectMemory, select_records, tokenize, render_record
@@ -19,9 +20,7 @@ def rec(id='r1', kind='fact', text='tests live in tests/, run pytest -q', tags=N
 
 
 def cfg(tmp_path, **over):
-    return Config('test-key', 'http://localhost:9/v1', 'model-x', 'chat', tmp_path,
-                  'prompt', 5000, 30000, 10, 10, 20, 100, 10000, False, False, False,
-                  True, False, 0.0, 0.0, 128000, **over)
+    return make_config(tmp_path, **over)
 
 
 def make_agent(tmp_path, provider, **over):
@@ -249,15 +248,13 @@ def test_remember_and_forget_tools_roundtrip(tmp_path):
 
 def test_remember_tool_prunes_to_configured_cap(tmp_path):
     from coding_agent.browser import Browser
-    from coding_agent.config import Config
     from coding_agent.github import GitHub
     from coding_agent.sandbox import DockerSandbox
     from coding_agent.git import Git
     from coding_agent.shell import Shell
     from coding_agent.tools import ToolContext
     from coding_agent.workspace import Workspace
-    cfg = Config(None, None, None, 'auto', tmp_path, 'prompt', 5000, 30000, 10, 10,
-                 20, 100, 10000, False, False, False, True, False, memory_max_records=2)
+    cfg = make_config(tmp_path, api_key=None, base_url=None, model=None, api_mode='auto', memory_max_records=2)
     c = ToolContext(cfg, Workspace(tmp_path), Shell(cfg), lambda *_: True,
                     Git(tmp_path), Browser(), GitHub(), DockerSandbox(tmp_path))
     pm = ProjectMemory(tmp_path)

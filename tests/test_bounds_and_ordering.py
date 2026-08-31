@@ -8,8 +8,8 @@ import json
 
 import pytest
 
+from tests.conftest import make_config
 from coding_agent.browser import Browser
-from coding_agent.config import Config
 from coding_agent.git import Git
 from coding_agent.github import GitHub
 from coding_agent.sandbox import DockerSandbox
@@ -19,13 +19,7 @@ from coding_agent.workspace import MAX_LISTING_ENTRIES, ConcurrentEditError, Wor
 
 
 def _cfg(tmp_path, **kw):
-    base = dict(api_key='k', base_url=None, model='m', api_mode='auto', workspace=tmp_path,
-                approval_mode='prompt', max_tool_output=5000, max_file_chars=30000,
-                command_timeout=10, max_turns=10, max_history_items=20,
-                max_history_chars=100, max_context_chars=10000, enable_browser=False,
-                enable_github=False, enable_sandbox=False, telemetry=True, debug=False)
-    base.update(kw)
-    return Config(**base)
+    return make_config(tmp_path, **kw)
 
 
 def _ctx(tmp_path, approve=True, **kw):

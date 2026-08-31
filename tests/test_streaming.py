@@ -1,6 +1,6 @@
 from types import SimpleNamespace as NS
 
-from coding_agent.config import Config
+from tests.conftest import make_config
 from coding_agent.conversation import AssistantMsg
 from coding_agent.llm import CodingAgent
 from coding_agent.session import Session
@@ -8,10 +8,7 @@ from coding_agent.session import Session
 
 def make_agent(tmp_path, streams, **overrides):
     """streams: list of chunk-lists; each agent.run consumes the next one."""
-    c = Config('test-key', 'http://localhost:9/v1', 'model-x', 'chat', tmp_path,
-               'prompt', 5000, 30000, 10, 10, 20, 100, 10000,
-               False, False, False, True, False, 0.0, 0.0, 128000, 2, True, 80,
-               True, True)
+    c = make_config(tmp_path, price_input_per_million=0.0, price_output_per_million=0.0, request_retries=2, auto_compact=True, stream_chat=True, auto_checkpoint=True)
     agent = CodingAgent(c, None, Session(tmp_path))
     events = []
     agent.events.callback = lambda e: events.append((e.kind, dict(e.data or {})))
@@ -74,9 +71,7 @@ def test_tool_call_fragments_assemble_and_dispatch(tmp_path):
 
 
 def test_stream_disabled_uses_buffered_path(tmp_path):
-    c = Config('test-key', None, 'm', 'chat', tmp_path, 'prompt', 5000, 30000,
-               10, 10, 20, 100, 10000, False, False, False, True, False,
-               0.0, 0.0, 128000, 2, True, 80, False, True)
+    c = make_config(tmp_path, base_url=None, model='m', price_input_per_million=0.0, price_output_per_million=0.0, request_retries=2, auto_compact=True, auto_checkpoint=True)
     agent = CodingAgent(c, None, Session(tmp_path))
     agent.provider = NS(chat=lambda **kw: NS(choices=[NS(message=NS(content='plain', tool_calls=None))],
                                              usage=None))

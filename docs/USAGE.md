@@ -43,7 +43,12 @@ Review this repository for security and correctness issues. Do not modify files.
 - `/clear` — wipe the model context entirely (no summary)
 - `/quit` — exit
 
-When the conversation approaches the context limit (`CODER_AUTO_COMPACT_PCT` of `CODER_CONTEXT_WINDOW`, 80% by default), the agent compacts automatically using the same mechanism.
+You rarely need `/compact`: before every request the agent measures the payload it is
+about to send and compacts automatically if it would not fit the context budget. Set
+`CODER_CONTEXT_WINDOW` to match your model — the budget cannot bind without it.
+
+There is no turn limit. A task that needs two hundred round-trips gets them; Ctrl+C
+pauses whenever you want to step in.
 
 ## Working todo list
 
@@ -58,8 +63,8 @@ todos
 ```
 
 The list updates live as steps finish, each turn reports `todos: N/M done`, and
-the current queue is re-injected into every model request so context trimming or
-auto-compaction cannot make the model forget its own plan. Objections work like
+the current queue is re-injected into every model request so context reduction or
+context reduction cannot make the model forget its own plan. Objections work like
 interrupting a colleague: just type your correction — the model revises the list
 first, then continues. Open todos carry over into `/resume` digests.
 

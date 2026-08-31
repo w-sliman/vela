@@ -8,8 +8,8 @@ import json
 
 import pytest
 
+from tests.conftest import make_config
 from coding_agent.browser import Browser
-from coding_agent.config import Config
 from coding_agent.git import Git
 from coding_agent.github import GitHub
 from coding_agent.sandbox import DockerSandbox
@@ -26,8 +26,7 @@ def _ws(tmp_path, limit=LIMIT):
 
 @pytest.fixture
 def tool_ctx(tmp_path):
-    cfg = Config(None, None, None, 'auto', tmp_path, 'prompt', 5000, LIMIT, 10, 10, 20, 100,
-                 10000, False, False, False, True, False)
+    cfg = make_config(tmp_path, api_key=None, base_url=None, model=None, api_mode='auto', max_file_chars=LIMIT)
     return ToolContext(cfg, _ws(tmp_path), Shell(cfg), lambda *_: True, Git(tmp_path),
                        Browser(), GitHub(), DockerSandbox(tmp_path))
 

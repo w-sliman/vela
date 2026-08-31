@@ -41,7 +41,8 @@ OPENAI_MODEL=...
 Never commit `.env`.
 
 Every knob is documented inline in `.env.example` — approval mode, context
-window size (for the live context-% display), auto-compact, streaming,
+window size (drives the context budget and the live context-% display),
+context reduction, streaming,
 auto-checkpoint, retries, prices. Defaults are sensible; only the two keys
 above are required.
 

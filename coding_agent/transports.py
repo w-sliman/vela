@@ -57,7 +57,10 @@ class ChatTransport:
         return out
 
     def send(self,history,advisory,schemas,on_token=None):
-        r=self.provider.chat(model=self.model,messages=self.encode(history,advisory),
+        return self.send_payload(self.encode(history,advisory),schemas,on_token)
+
+    def send_payload(self,payload,schemas,on_token=None):
+        r=self.provider.chat(model=self.model,messages=payload,
                              tools=self._tools(schemas),tool_choice='auto')
         m=r.choices[0].message
         return Reply(text=m.content or '',tool_calls=_decode_chat_calls(m.tool_calls),
@@ -69,8 +72,8 @@ class StreamingChatTransport(ChatTransport):
     name='chat+stream'
     streams=True
 
-    def send(self,history,advisory,schemas,on_token=None):
-        stream=self.provider.chat_stream(model=self.model,messages=self.encode(history,advisory),
+    def send_payload(self,payload,schemas,on_token=None):
+        stream=self.provider.chat_stream(model=self.model,messages=payload,
                                          tools=self._tools(schemas),tool_choice='auto')
         parts=[];slots={};usage=None;emitted=False
         for chunk in stream:
@@ -118,8 +121,11 @@ class ResponsesTransport:
         return out
 
     def send(self,history,advisory,schemas,on_token=None):
+        return self.send_payload(self.encode(history,advisory),schemas,on_token)
+
+    def send_payload(self,payload,schemas,on_token=None):
         r=self.provider.responses(model=self.model,instructions=self.system,
-                                  input=self.encode(history,advisory),tools=schemas)
+                                  input=payload,tools=schemas)
         items=list(r.output)
         calls=[ToolCall(id=getattr(x,'call_id',None) or getattr(x,'id',''),name=x.name,
                         arguments=x.arguments)

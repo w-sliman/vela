@@ -7,7 +7,7 @@ The agent's history holds only these. Wire formats — the Responses API's
 
 That boundary is what lets the agent switch transports mid-conversation: the same
 history re-encodes into either wire format, so a transport failure costs a retry
-rather than the conversation. It is also why trimming, compaction, interrupt
+rather than the conversation. It is also why reduction, compaction, interrupt
 repair and path harvesting each need one code path instead of two.
 """
 from __future__ import annotations

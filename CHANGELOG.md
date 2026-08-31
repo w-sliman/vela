@@ -5,6 +5,39 @@ version headings below record development history rather than shipped releases.
 
 ## Unreleased
 
+### Context budget: one owner for "does this payload fit?"
+- **Three mechanisms were guessing independently.** A char-budget `trim` ran every
+  turn, a once-per-request auto-compact read the *previous* call's reported usage, and
+  `/compact` was manual. None measured the actual outgoing payload against the actual
+  limit — so the agent was blind on the first turn of a request, blind on endpoints
+  that report no usage, and always one fat tool result behind the truth.
+- **Trimming and compaction were never two concerns.** Both answer *reduce the
+  conversation to fit*; compaction preserves knowledge, dropping does not. New
+  `budget.py` orders them as preference and fallback, so losing history is the
+  degraded path rather than the default behaviour of a trimmer running every turn.
+  That silent trimming was also what made a long run forget its own earlier attempts.
+- **Measurement replaced guessing.** `ContextBudget` sizes the payload the transport
+  just encoded — the same object handed to the provider, so there is no gap between
+  what was measured and what was sent. Estimates self-calibrate: any server that
+  reports usage corrects the chars-per-token ratio; servers that report nothing keep
+  the default and still get enforcement.
+- **Progress is verified, not assumed.** A summary can be as large as the turns it
+  replaced. A reduction that reports success while freeing nothing now falls through
+  to the blunter method — without that check the fit loop spins forever, which the
+  tests caught.
+- **The threshold is derived, not tuned.** `CODER_AUTO_COMPACT_PCT` is gone; the limit
+  is the window minus reply headroom (`CODER_REPLY_RESERVE_TOKENS`, default window/8,
+  capped at half the window so it can never collapse the limit to zero).
+- **`max_turns` removed.** Long tasks are bounded by the context budget and by Ctrl+C,
+  which pauses cooperatively. The old cap of 30 raised a `RuntimeError` that discarded
+  a request's worth of completed work for no safety the budget does not provide.
+- Removed `context.py` and the now-dead knobs `CODER_MAX_TURNS`,
+  `CODER_MAX_HISTORY_ITEMS`, `CODER_MAX_HISTORY_CHARS`, `CODER_MAX_CONTEXT_CHARS`,
+  `CODER_AUTO_COMPACT_PCT`.
+- Tests: new `tests/conftest.py` provides `make_config`, replacing 25 positional
+  `Config(...)` constructions whose field order made every schema change a 25-file
+  edit. `test_auto_compact.py` became `test_budget.py`.
+
 ### Transport abstraction: a canonical conversation model
 - **The provider wire format had leaked out of the transport layer.** History stored
   either Responses items (`{'type':'function_call','call_id':…}`) or Chat messages

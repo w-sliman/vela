@@ -1,6 +1,6 @@
 import pytest
 
-from coding_agent.config import Config
+from tests.conftest import make_config
 from coding_agent.editor import exact_replace, replace_lines, unified_apply
 from coding_agent.shell import Shell
 from coding_agent.tools import ToolContext, dispatch
@@ -8,8 +8,7 @@ from coding_agent.workspace import Workspace
 
 
 def context(tmp_path):
-    cfg = Config(None, None, None, 'auto', tmp_path, 'prompt', 5000, 30000,
-                 10, 10, 20, 100, 10000, False, False, False, True, False)
+    cfg = make_config(tmp_path, api_key=None, base_url=None, model=None, api_mode='auto')
     return ToolContext(cfg, Workspace(tmp_path), Shell(cfg), lambda *_: True,
                        None, None, None, None)
 

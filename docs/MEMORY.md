@@ -6,7 +6,7 @@ The agent has three different kinds of state:
 2. **Persistent project memory** — `.coder-agent/memory.json` stores durable facts, decisions, and preferences as records (`id`, `kind`, `text`, `tags`, `paths`, `created`, `last_seen`, `hits`). The `remember` tool writes it (optional `tags`/`paths` sharpen retrieval), `recall_memory` reads all records, and `forget_memory` deletes by id prefix. Exact duplicates update `last_seen` instead of piling up. Legacy bucket-format files are migrated automatically. Memory is advisory; current files and tool results always win.
 3. **Session memory** — `.coder-agent/sessions/*.jsonl` records what happened in a run: user requests, tool calls/results, per-model-call exact token `usage`, transport `error`s, `compact`ions, timings, and assistant responses. It is primarily for continuity (`/sessions`, `/resume`), debugging, and after-the-fact review.
 
-The active LLM context is bounded three ways: char/item budgets with pair-aware trimming (`CODER_MAX_CONTEXT_CHARS`, `CODER_MAX_HISTORY_ITEMS`), explicit `/compact [focus]` (LLM-written summary of older turns; the summarizer chooses how many recent turns stay verbatim), and automatic compaction when the last prompt exceeds `CODER_AUTO_COMPACT_PCT`% of `CODER_CONTEXT_WINDOW`.
+The active LLM context is bounded one way: before every request the outgoing payload is measured against the context budget (`CODER_CONTEXT_WINDOW` minus reply headroom) and the conversation is reduced until it fits — summarizing older turns, and dropping the oldest only if summarizing fails. `/compact [focus]` runs the same summarization on demand. See `docs/ARCHITECTURE.md`.
 
 A good mental model is:
 
@@ -20,7 +20,7 @@ A good mental model is:
 Once per user request the agent ranks memory records against the request text plus
 the workspace paths touched by recent tool calls, and attaches the best matches to
 the outgoing model payload as an advisory `[project memory]` block. The block is
-never persisted into conversation history, so pair-aware trimming and history
+never persisted into conversation history, so pair-aware reduction and history
 integrity are untouched, and any memory failure is logged and skipped rather than
 failing the request.
 

@@ -1,10 +1,9 @@
-from coding_agent.config import Config
+from tests.conftest import make_config
 from coding_agent.shell import Shell
 
 
 def config(tmp_path):
-    return Config(None, None, None, 'auto', tmp_path, 'prompt', 5000, 30000,
-                  10, 10, 20, 100, 10000, False, False, False, True, False)
+    return make_config(tmp_path, api_key=None, base_url=None, model=None, api_mode='auto')
 
 
 def test_child_env_scrubs_secrets(monkeypatch, tmp_path):

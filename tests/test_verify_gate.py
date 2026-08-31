@@ -3,6 +3,7 @@ from types import SimpleNamespace as NS
 
 
 from coding_agent.config import Config
+from tests.conftest import make_config
 from coding_agent.llm import VERIFY_GATE_MSG, CodingAgent
 from coding_agent.session import Session
 
@@ -12,9 +13,7 @@ from tests.test_todos import tool_ctx
 def cfg(tmp_path, **over):
     over.setdefault('stream_chat', False)
     over.setdefault('verify_gate', True)
-    return Config('test-key', 'http://localhost:9/v1', 'model-x', 'chat', tmp_path,
-                  'prompt', 5000, 30000, 10, 10, 20, 100, 10000, False, False, False,
-                  True, False, 0.0, 0.0, 128000, **over)
+    return make_config(tmp_path, **over)
 
 
 class Scripted:

@@ -43,7 +43,7 @@ The central design principle is: **the LLM proposes; deterministic Python execut
   encodes canonical items into a request and decodes the reply back into canonical
   items: `ResponsesTransport`, `ChatTransport`, `StreamingChatTransport`.
 - `llm.py`: the controller loop — one `_step()` over whichever transport is active,
-  plus request retries with backoff, auto-compact at a context threshold, `/compact`
+  plus request retries with backoff, budget-driven context reduction, `/compact`
   summarization, the verify gate, and interrupt repair.
 - `providers.py`: thin OpenAI-compatible client wrapper (responses / chat / chat_stream), wrapped by the transports above.
 - `tools.py`: tool schemas (single source of truth for validation) and deterministic dispatcher; per-edit git checkpoints hook in here.
@@ -57,7 +57,7 @@ The central design principle is: **the LLM proposes; deterministic Python execut
   lexical; *path* containment is enforced separately by `ensure_within`.
 - `editor.py`: unified-diff application, exact/fuzzy/line-range replacement, closest-match error hints.
 - `search.py`: regex text search plus AST-based Python symbol index.
-- `context.py`: pair-aware history blocks and trimming (tool-call pairs never split) — one pairing rule, since history is transport-neutral.
+- `budget.py`: the single owner of "does this payload fit?" — token estimation with self-calibration, pair-aware blocks, and the two reductions (summarize, then drop).
 - `telemetry.py`: exact usage extraction from both API naming conventions, metrics, timers.
 - `session.py`: UTC-stamped JSONL session traces (user/tool_call/tool_result/usage/error/compact/assistant events).
 - `git.py`: repo bootstrap, per-edit snapshots, undo, status/diff/checkpoint.
@@ -104,7 +104,7 @@ Every fallback is journaled as a `transport_fallback` event and announced in the
 ## Advisory context blocks
 
 Two blocks are appended to outgoing model payloads but **never persisted into
-history** — so pair-aware trimming and history integrity are untouched by
+history** — so pair-aware reduction and history integrity are untouched by
 construction, and either block failing only costs its own presence:
 
 - **Memory recall** (`memory_injected`): lexically selected project memories,
@@ -114,22 +114,51 @@ construction, and either block failing only costs its own presence:
   `write_todos` tool — validated and diffed deterministically, rendered live in
   the REPL, journaled to the trace, and carried into `/resume` digests.
 
-Because both survive trimming/compaction while ordinary turns do not, they act
+Because both survive context reduction while ordinary turns do not, they act
 as durable anchors: remembered knowledge across sessions, stated intent across
 a long run.
 
 ## Context management
 
-History is grouped into atomic blocks (a tool call and its output always move
-together). Trimming drops whole leading blocks under char/item budgets;
-`/compact` replaces older turns with an LLM-written summary whose retention
-window the summarizer itself chooses (clamped 1–5 turns). Auto-compact fires
-once per request when the last prompt exceeds `CODER_AUTO_COMPACT_PCT` of
-`CODER_CONTEXT_WINDOW`; if the summarizer call itself fails, the request continues
-uncompacted (bounded by ordinary trimming) rather than failing.
+One question owns this: **does the payload we are about to send fit?**
 
-Two failure paths deliberately trade context for progress rather than raising:
-auto-compact as above, and the `auto`-mode transport fallback, which restarts the
-conversation from the current request plus a corrective instruction when a server
-rejects a tool call before returning a response. Both are journaled to the session
-trace; project memory is what carries knowledge across either.
+`ContextBudget` answers it, and it is the only thing that does. Before every request
+the agent encodes the conversation, measures that payload, and reduces until it fits:
+
+```text
+payload = transport.encode(history, advisory)
+while not budget.fits(payload) and budget.reducible(history):
+    reduce(history)            # summarize; drop only if summarizing fails
+    payload = transport.encode(history, advisory)
+send(payload)
+```
+
+- **Measured, not guessed.** The payload sized is the payload sent — the transport
+  encodes once and the same object goes to the provider. The earlier design read the
+  *previous* call's reported usage, so it was blind on the first turn, blind on
+  endpoints that report no usage, and one fat tool result behind the truth.
+- **Self-calibrating.** When a server does report usage, the true token count for a
+  payload we measured corrects the chars-per-token ratio. Endpoints that report
+  nothing keep the default and still get enforcement.
+- **Summarizing is the reduction; dropping is the fallback.** Losing history is the
+  degraded path, reached only when the summarizer is unavailable or fails — not the
+  default behaviour of a trimmer running every turn.
+- **Progress is verified, never assumed.** A summary can be as large as the turns it
+  replaced. A reduction that reports success but frees nothing is treated as a
+  failure and the blunter method runs instead, so the loop cannot spin.
+- **The limit is derived, not tuned.** It is the window minus headroom for the reply
+  (`CODER_REPLY_RESERVE_TOKENS`, default window/8), rather than a percentage someone
+  picked. Headroom is capped at half the window so it can never swallow it.
+- **An unknown window means no enforcement.** `CODER_CONTEXT_WINDOW` must match your
+  model for the budget to bind.
+
+`/compact [focus]` invokes the same summarization by hand; the summarizer chooses how
+many recent turns stay verbatim (clamped 1–5). Every automatic reduction is journaled
+as a `budget_reduced` event recording the method, the estimate and the limit.
+
+### No turn cap
+
+There is no `max_turns`. A long task is a long task; the loop is bounded by the
+context budget and by Ctrl+C, which pauses cooperatively. The old limit of 30 raised
+a `RuntimeError` that discarded a request's worth of work for no safety benefit the
+budget does not already provide.

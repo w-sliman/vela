@@ -1,5 +1,5 @@
 import json
-from coding_agent.config import Config
+from tests.conftest import make_config
 from coding_agent.tools import ToolContext, dispatch
 from coding_agent.workspace import Workspace
 from coding_agent.shell import Shell
@@ -9,9 +9,7 @@ from coding_agent.github import GitHub
 from coding_agent.sandbox import DockerSandbox
 
 def make_ctx(tmp_path, callback, approval_edits=True):
-    c = Config('test-key', 'http://localhost:9/v1', 'model-x', 'chat', tmp_path,
-               'prompt', 5000, 30000, 10, 10, 20, 100, 10000, False, False, False,
-               True, False, 0.0, 0.0, 128000, approval_edits=approval_edits)
+    c = make_config(tmp_path, price_input_per_million=0.0, price_output_per_million=0.0, approval_edits=approval_edits)
     ctx = ToolContext(c, Workspace(tmp_path), Shell(c), callback, Git(tmp_path),
                       Browser(), GitHub(), DockerSandbox(tmp_path))
     ctx.todos = None

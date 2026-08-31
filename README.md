@@ -11,7 +11,7 @@ layer, so they hold regardless of which model you point at it.
 
 That constraint shapes everything else here: a conversation model that belongs to no
 provider, so a failing transport costs a retry instead of your context; history
-trimming that can never orphan a tool-call pair; edits that fail closed on a stale hash rather than half-applying, a
+context reduction that can never orphan a tool-call pair; edits that fail closed on a stale hash rather than half-applying, a
 `/resume` that rebuilds task state as a digest instead of replaying tool calls, and
 token telemetry that reports "unknown" rather than guessing.
 
@@ -106,13 +106,19 @@ review this repository for correctness issues; do not modify files
 - Assistant text streams live as tokens (chat transport; `CODER_STREAM=0` disables).
 - Every model call journals an exact `usage` event (input/output tokens) to the session trace; calls without server-reported usage are counted and flagged, never estimated.
 - A live status line shows tokens in/out/total plus current context fill after each model turn; `/usage` shows session totals.
-- When context crosses `CODER_AUTO_COMPACT_PCT` (default 80%) of `CODER_CONTEXT_WINDOW`, older turns are summarized automatically once per request (`CODER_AUTO_COMPACT=0` disables).
+- Before every request the outgoing payload is measured against the context budget
+  (`CODER_CONTEXT_WINDOW` minus reply headroom) and the conversation is reduced until
+  it fits — summarizing older turns, dropping the oldest only if summarizing fails.
+  Token estimates self-calibrate from any usage the server reports. `CODER_AUTO_COMPACT=0`
+  disables reduction.
+- There is no turn limit: long tasks run as long as they need, bounded by the context
+  budget and by Ctrl+C.
 - Failed model requests retry with exponential backoff (`CODER_REQUEST_RETRIES`, default 2) before falling back from the Responses API to Chat Completions.
 - Subprocesses run with secret-shaped environment variables (API keys, tokens) removed.
 - Each successful edit auto-commits a git checkpoint in the workspace (`CODER_AUTO_CHECKPOINT=0` disables); `/undo` reverts the last one.
 - Relevant project memories are retrieved lexically once per user request and attached as advisory context; the ids used are shown after each turn (`memory: r2, r7`). Disable with `CODER_MEMORY_INJECT=0`; tune via `CODER_MEMORY_TOPK`, `CODER_MEMORY_MAX_CHARS`, `CODER_MEMORY_MIN_SCORE`. `/compact` also distills durable decisions into memory (`CODER_MEMORY_DISTILL=0` disables). See `docs/MEMORY.md`.
 - Memory stays curated automatically: writes enforce a record cap (`CODER_MEMORY_MAX_RECORDS`, coldest dropped first) and an optional age limit (`CODER_MEMORY_TTL_DAYS`, off by default); `/memory consolidate [focus]` asks the model to group paraphrased duplicates and merges them deterministically.
-- For non-trivial tasks the agent maintains a visible working todo list (`write_todos` tool): announced before work starts, updated live as steps finish, re-injected into every model request so it survives context trimming/compaction, and journaled with per-change diffs. Inspect anytime with `/todos`; disable via `CODER_TODOS=0`.
+- For non-trivial tasks the agent maintains a visible working todo list (`write_todos` tool): announced before work starts, updated live as steps finish, re-injected into every model request so it survives context reduction, and journaled with per-change diffs. Inspect anytime with `/todos`; disable via `CODER_TODOS=0`.
 - Optional experimental guardrail (`CODER_VERIFY_GATE=1`): if the model tries to finish while todos are open or edits were never followed by a passing check, it gets one corrective nudge first.
 - **Ctrl+C pauses instead of destroying**: an interrupt mid-run closes any dangling tool-call pair, journals the pause, and returns you to the prompt with full context intact. `/continue` resumes exactly where it stopped.
 - Past sessions can be continued: `/resume` rebuilds task state from any recorded trace as a compact digest (never as raw replay), keeping history/pair integrity intact.
@@ -172,7 +178,7 @@ coding_agent/
   policy.py      # command classification + path containment
   editor.py      # unified diffs, exact/fuzzy/line-range replacement
   search.py      # regex search + AST symbol index
-  context.py     # pair-aware history blocks and trimming
+  budget.py      # context budget: measure the payload, reduce until it fits
   memory.py      # persistent records, lexical scoring, curation
   resume.py      # trace index and digest construction
   telemetry.py   # exact usage extraction, metrics, timers

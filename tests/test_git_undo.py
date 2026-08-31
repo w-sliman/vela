@@ -1,4 +1,4 @@
-from coding_agent.config import Config
+from tests.conftest import make_config
 from coding_agent.git import Git
 from coding_agent.workspace import Workspace
 
@@ -14,9 +14,7 @@ def test_clean_tree_reports_clean(tmp_path):
 def test_edit_tool_creates_checkpoint(tmp_path):
     from coding_agent.tools import ToolContext, dispatch
     from coding_agent.shell import Shell
-    c = Config('k', None, 'm', 'auto', tmp_path, 'prompt', 5000, 30000, 10, 10,
-               20, 100, 10000, False, False, False, True, False,
-               0.0, 0.0, 128000, 2, True, 80, True, True)
+    c = make_config(tmp_path, api_key='k', base_url=None, model='m', api_mode='auto', price_input_per_million=0.0, price_output_per_million=0.0, request_retries=2, auto_compact=True, stream_chat=True, auto_checkpoint=True)
     ctx = ToolContext(c, Workspace(tmp_path), Shell(c), lambda *_: True,
                       Git(tmp_path), None, None, None)
     result = dispatch(ctx, 'write_file', {'path': 'app.py', 'content': 'print(1)\n'})
@@ -80,8 +78,7 @@ def test_undo_last_checkpoint_root_commit_refuses(tmp_path):
 
 def test_list_files_hides_git_dir(tmp_path):
     from coding_agent.tools import ToolContext
-    c = Config('k', None, 'm', 'auto', tmp_path, 'prompt', 5000, 30000, 10, 10,
-               20, 100, 10000, False, False, False, True, False)
+    c = make_config(tmp_path, api_key='k', base_url=None, model='m', api_mode='auto')
     ctx = ToolContext(c, Workspace(tmp_path), None, lambda *_: True,
                       Git(tmp_path), None, None, None)
     ctx.git.ensure_repo()
