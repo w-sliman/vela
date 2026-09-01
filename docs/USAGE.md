@@ -33,7 +33,7 @@ Review this repository for security and correctness issues. Do not modify files.
 - `/tree` — workspace tree
 - `/model` — configured model and endpoint
 - `/usage` — session token usage, estimated cost, context fill
-- `/compact [focus]` — summarize older turns into one context message; optionally tell it what to focus on. The summarizer itself chooses how many recent turns to keep verbatim, and may also distill durable decisions into project memory.
+- `/compact [focus]` — summarize older turns into one context message; optionally tell it what to focus on. How many recent turns stay verbatim is set by `VELA_COMPACT_KEEP_TURNS` (default 3). The summarizer may also distill durable decisions into project memory.
 - `/undo` — revert the workspace to the state before the last agent edit checkpoint (commits starting with `auto: `; user commits are never reverted; asks for confirmation per the configured approval mode)
 - `/memory [consolidate [focus]]` — show persistent project memory; `consolidate` asks the model to group duplicate/paraphrased records and merges them deterministically
 - `/todos` — the agent's current working todo list (what it announced, what is done)

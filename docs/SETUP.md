@@ -1,7 +1,7 @@
 # Setup
 
-> **Unreleased project.** There is no packaged release or license grant; install from
-> a checkout only, and expect interfaces to change.
+> **Unreleased project.** MIT licensed, but there is no packaged release; install
+> from a checkout only, and expect interfaces to change.
 
 ## Requirements
 
@@ -71,7 +71,7 @@ Activate the venv first (the suite and smoke check expect `pytest` on PATH):
 source .venv/bin/activate
 pytest -q
 python smoke/runner.py
-./scripts/check.sh        # pytest + compileall + ruff/mypy when installed
+./scripts/check.sh        # pytest + compileall + ruff + mypy (pip install -e '.[dev]')
 ```
 
 No API key or network is needed for the unit tests.

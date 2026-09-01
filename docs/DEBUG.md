@@ -10,12 +10,12 @@ You will see operational steps such as:
 
 ```text
 ▶ model request
-▶ read_file
-✓ read_file
-▶ apply_patch
-✓ apply_patch
-▶ run_tests
-✓ run_tests
+▶ tool: read_file
+✓ tool: read_file
+▶ tool: apply_patch
+✓ tool: apply_patch
+▶ tool: run_tests
+✓ tool: run_tests
 ✓ model response
 ```
 
@@ -26,4 +26,4 @@ Two event kinds render even without debug mode:
 - streamed assistant text (raw tokens, live) while the model works;
 - the per-turn usage line: `⇄ tokens 12.3k in / 0.9k out / 13.2k total | context 12.3k/128.0k (10%)`, or a warning with advice if the endpoint returned no usage object.
 
-Session traces journal these as `usage` events either way, plus `error` events for failed model requests and `compact` events for compactions.
+Session traces journal these as `usage` events either way, plus `error` events for failed model requests, `compact` and `budget_reduced` events for context reduction, and `context_window` events for window discovery.

@@ -1,9 +1,11 @@
 # Tools
 
-All tools are dispatched deterministically in `tools.py`. Required arguments are
-validated against each tool's schema before execution, so missing arguments
-produce a named error (e.g. `missing required argument(s): path`) instead of a
-traceback. Edit tools return structured recovery guidance on failure.
+All tools are dispatched deterministically in `tools.py`. Arguments are validated
+against each tool's schema before execution — missing ones produce a named error
+(e.g. `missing required argument(s): path`) rather than a traceback, and a string
+longer than the schema advertises is refused rather than silently truncated. An edit
+that would newly break a file the tools can parse is refused as well. Edit tools
+return structured recovery guidance on failure.
 
 ## Files & editing
 
@@ -16,13 +18,19 @@ traceback. Edit tools return structured recovery guidance on failure.
   file, so the stale-hash guard cannot detect a truncated round-trip. `write_file`
   therefore refuses any content containing that marker — edit large files with
   `replace_text` (`start_line`/`end_line`) or `apply_patch` instead.
-- **write_file** — create or replace a file. Optional `expected_hash` guards against
-  concurrent modification (including deletion-since-read). Write preconditions (size,
-  truncation marker, stale hash) are checked *before* any edit-approval prompt, so you
-  are never asked to approve a diff that cannot be applied. Auto-checkpoints on success.
+- **write_file** — create or replace a file. `expected_hash` is **required** when the
+  file already exists, and guards against concurrent modification (including
+  deletion-since-read); creating a new file needs none. Write preconditions (size,
+  truncation marker, stale hash, argument length) are checked *before* any
+  edit-approval prompt, so you are never asked to approve a diff that cannot be
+  applied. Auto-checkpoints on success.
 - **replace_text** — two modes:
   - *anchor mode*: exact `old` → `new` replacement with optional `occurrence`;
-  - *line mode*: `start_line`..`end_line` (1-based, inclusive) replaced verbatim by `new`.
+  - *line mode*: `start_line`..`end_line` (1-based, inclusive) replaced verbatim by
+    `new`. Both bounds are required together, as is `expected_hash`: a line range is
+    positional, so nothing in it is checked against the text being replaced. Letting
+    `end_line` default read as "insert here" to a model rewriting a region, and
+    silently replaced one line instead.
   - `fuzzy=True` allows near-miss anchors but **requires `expected_hash`**. Failed anchors return the closest matching lines from the current file so the model can self-correct in one retry.
 - **apply_patch** — single-file unified diff with strict context validation. Blank
   context lines are accepted both canonically (`' \n'`) and with the trailing space

@@ -7,6 +7,9 @@ __pycache__/
 # The agent's scratch workspace: whatever it is pointed at is the user's own work
 # or throwaway demo material, never part of this project. The directory is created
 # on first run, so nothing here needs to ship.
+# Kept locally as a working note; its claims are not maintained against the code.
+docs/ROADMAP.md
+
 workspace/
 .mypy_cache/
 .ruff_cache/

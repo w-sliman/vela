@@ -254,4 +254,4 @@ Inspect the existing implementation first. Add retry handling to the HTTP client
 
 For larger or untrusted tasks, work inside a disposable copy of the repository.
 
-See `CONTRIBUTING.md` for engineering conventions, `CHANGELOG.md` for release history, and `docs/SETUP.md`, `docs/USAGE.md`, `docs/ARCHITECTURE.md`, `docs/TOOLS.md`, `docs/EDITING.md`, `docs/SECURITY.md`, and `docs/ROADMAP.md` for details.
+See `CONTRIBUTING.md` for engineering conventions, `CHANGELOG.md` for release history, and `docs/SETUP.md`, `docs/USAGE.md`, `docs/ARCHITECTURE.md`, `docs/TOOLS.md`, `docs/MEMORY.md`, `docs/SECURITY.md` and `docs/DEBUG.md` for details.

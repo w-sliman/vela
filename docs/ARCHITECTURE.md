@@ -58,13 +58,13 @@ The central design principle is: **the LLM proposes; deterministic Python execut
 - `policy.py`: command classification (allow-list + compound/inline-exec/install/
   destructive-find/host-path gates) and path containment. Classification is purely
   lexical; *path* containment is enforced separately by `ensure_within`.
-- `editor.py`: unified-diff application, exact/fuzzy/line-range replacement, closest-match error hints.
+- `editor.py`: unified-diff application, exact/fuzzy/line-range replacement, closest-match error hints, and the guard that refuses an edit which would newly break a file the tools can parse.
 - `search.py`: regex text search plus AST-based Python symbol index.
 - `window.py`: learns the model's context window — rejection first, local-server probe second, configuration last; caches per endpoint+model.
-- `budget.py`: the single owner of "does this payload fit?" — token estimation with self-calibration, pair-aware blocks, and the two reductions (summarize, then drop).
+- `budget.py`: the single owner of "does this payload fit?" — token estimation with self-calibration, pair-aware blocks, and the reduction ladder (summarize, elide the largest tool result, then drop).
 - `telemetry.py`: exact usage extraction from both API naming conventions, metrics, timers.
 - `session.py`: UTC-stamped JSONL session traces (user/tool_call/tool_result/usage/error/compact/assistant events).
-- `git.py`: repo bootstrap, per-edit snapshots, undo, status/diff/checkpoint.
+- `git.py`: repo bootstrap, per-edit snapshots, undo, status/diff/checkpoint. Snapshots exclude `.vela/`, so undoing an edit cannot rewrite the agent's own session traces.
 - `resume.py`: session-trace index, `/resume` ref resolution (index/prefix), and mechanical digest construction from traces.
 - `memory.py` curation selects records by position rather than by value, so records
   with identical text are pruned individually rather than as a group.
@@ -134,7 +134,7 @@ the agent encodes the conversation, measures that payload, and reduces until it 
 ```text
 payload = transport.encode(history, advisory)
 while not budget.fits(payload) and budget.reducible(history):
-    reduce(history)            # summarize; drop only if summarizing fails
+    reduce(history)            # summarize -> elide a tool result -> drop
     payload = transport.encode(history, advisory)
 send(payload)
 ```
@@ -146,9 +146,13 @@ send(payload)
 - **Self-calibrating.** When a server does report usage, the true token count for a
   payload we measured corrects the chars-per-token ratio. Endpoints that report
   nothing keep the default and still get enforcement.
-- **Summarizing is the reduction; dropping is the fallback.** Losing history is the
-  degraded path, reached only when the summarizer is unavailable or fails — not the
-  default behaviour of a trimmer running every turn.
+- **Reduction is a ladder, cheapest first.** Summarize older turns; failing that,
+  elide the body of the largest tool result (keeping its call/result pair intact, so
+  history stays valid and the model is told what it lost); only then drop the oldest
+  block. The middle rung exists because the other two reason in *user turns*, and a
+  single agentic turn can fill the window on its own — there is nothing older to
+  summarize, and the bulk is in the newest block rather than the oldest. Every
+  reduction takes this ladder, including the forced one after a server rejection.
 - **Progress is verified, never assumed.** A summary can be as large as the turns it
   replaced. A reduction that reports success but frees nothing is treated as a
   failure and the blunter method runs instead, so the loop cannot spin.
@@ -168,8 +172,10 @@ So the window is learned, from three sources in descending authority:
    (`"maximum context length is 8192 tokens"`). Parsing that is provider-agnostic,
    costs one failed request once per model, and is ground truth. It overrides even an
    explicit `VELA_CONTEXT_WINDOW` — observation outranks configuration, because the
-   server is not wrong about its own ceiling. Learned values are cached per
-   (endpoint, model) in `.vela/windows.json`.
+   server is not wrong about its own ceiling. Cached per (endpoint, model) in
+   `.vela/windows.json`, *with the source that produced it*: a probe cached as though
+   it were a rejection would outrank the operator's own setting from the second
+   session onwards, which is a bug, not a feature.
 2. **A probe** of local servers that do report it, tried at startup unless the window
    was set by hand: vLLM's `max_model_len` on `/v1/models`, llama.cpp's
    `default_generation_settings.n_ctx` on `/props`, Ollama's `num_ctx` from
@@ -183,15 +189,20 @@ it silently disables reduction and the request is rejected anyway:
 
 - Ollama's `model_info["<arch>.context_length"]` is **not** used as a fallback. That
   is the model's maximum, not what Ollama serves; its real default is far smaller.
-- A limit is never inferred when the rejection does not state one. llama.cpp reports
-  overflow with no number; the agent sheds a block and retries instead of guessing.
+- A limit is never inferred when the rejection does not state one. The parser reads a
+  structured field where the server sends one (llama.cpp's `n_ctx`) and matches the
+  common prose phrasings otherwise; when neither yields a number the agent sheds a
+  block and retries rather than guessing one.
 
 The resolved window and its source are journaled as a `context_window` event, printed
 at startup when it was not simply configured, and shown by `/model`.
 
-`/compact [focus]` invokes the same summarization by hand; the summarizer chooses how
-many recent turns stay verbatim (clamped 1–5). Every automatic reduction is journaled
-as a `budget_reduced` event recording the method, the estimate and the limit.
+`/compact [focus]` invokes the same summarization by hand. How many recent turns stay
+verbatim is the operator's setting (`VELA_COMPACT_KEEP_TURNS`, default 3), not the
+summarizer's: the model cannot see the token budget, and keeping only one turn leaves
+`[summary] + one turn`, which is exactly the size at which compaction refuses to run
+again. Every automatic reduction is journaled as a `budget_reduced` event recording
+the method, the estimate and the limit.
 
 ### No turn cap
 

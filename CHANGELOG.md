@@ -301,4 +301,3 @@ isolation were wrong in practice. Commit messages carry the detail.
 
 ## 1.0.x — initial releases
 
-See `docs/ROADMAP.md` for the original feature plan.

@@ -9,7 +9,7 @@ The agent has four different kinds of state:
    rejected request that taught it is not repaid every session. Delete it to relearn.
 4. **Session memory** — `.vela/sessions/*.jsonl` records what happened in a run: user requests, tool calls/results, per-model-call exact token `usage`, transport `error`s, `compact`ions, timings, and assistant responses. It is primarily for continuity (`/sessions`, `/resume`), debugging, and after-the-fact review. Window discovery journals a `context_window` event here too.
 
-The active LLM context is bounded one way: before every request the outgoing payload is measured against the context budget (the model's context window — probed or learned, see `docs/ARCHITECTURE.md` — minus reply headroom) and the conversation is reduced until it fits — summarizing older turns, and dropping the oldest only if summarizing fails. `/compact [focus]` runs the same summarization on demand. See `docs/ARCHITECTURE.md`.
+The active LLM context is bounded one way: before every request the outgoing payload is measured against the context budget (the model's context window — probed or learned, see `docs/ARCHITECTURE.md` — minus reply headroom) and the conversation is reduced until it fits — summarizing older turns, then eliding the largest tool result, and dropping the oldest only as a last resort. `/compact [focus]` runs the same summarization on demand. See `docs/ARCHITECTURE.md`.
 
 A good mental model is:
 
