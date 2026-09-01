@@ -51,7 +51,7 @@ def tool_schemas():
  fn('list_files','List workspace files/directories.',{'path':{'type':'string'},'max_depth':{'type':'integer'}},[]),
  fn('read_file','Read a file. Returns content, a SHA-256 hash for safe editing, and a truncated flag when the file exceeded the read limit.',{'path':{'type':'string'}},['path']),
  fn('write_file','Create a file, or replace one whole. Prefer apply_patch or replace_text for edits. expected_hash is REQUIRED when the file already exists (read_file gives it); creating a new file needs none.',{'path':{'type':'string'},'content':{'type':'string','maxLength':12000},'expected_hash':{'type':'string'}},['path','content']),
- fn('replace_text','Replace text in a file. Two modes: (a) exact old->new text replacement, (b) line range start_line..end_line (1-based, inclusive) replaced verbatim by new; end_line defaults to start_line, so a range REPLACES those lines rather than inserting before them, and expected_hash is REQUIRED in this mode. If it fails, the tool returns structured recovery data, often including closest-match lines; re-read and retry.',{'path':{'type':'string'},'old':{'type':'string','maxLength':8000},'new':{'type':'string','maxLength':8000},'occurrence':{'type':'integer'},'expected_hash':{'type':'string'},'fuzzy':{'type':'boolean'},'start_line':{'type':'integer','description':'1-based first line to replace (alternative to old)'},'end_line':{'type':'integer','description':'1-based last line to replace (defaults to start_line)'}},['path','new']),
+ fn('replace_text','Replace text in a file. Two modes: (a) exact old->new text replacement, (b) line range start_line..end_line (1-based, inclusive) replaced verbatim by new; both start_line and end_line are REQUIRED together in this mode, as is expected_hash; the range is REPLACED verbatim, never inserted before. If it fails, the tool returns structured recovery data, often including closest-match lines; re-read and retry.',{'path':{'type':'string'},'old':{'type':'string','maxLength':8000},'new':{'type':'string','maxLength':8000},'occurrence':{'type':'integer'},'expected_hash':{'type':'string'},'fuzzy':{'type':'boolean'},'start_line':{'type':'integer','description':'1-based first line to replace (alternative to old)'},'end_line':{'type':'integer','description':'1-based last line to replace; required whenever start_line is given'}},['path','new']),
  fn('apply_patch','Apply a unified diff with context validation and return the resulting diff.',{'path':{'type':'string'},'patch':{'type':'string','maxLength':16000},'expected_hash':{'type':'string'}},['path','patch']),
  fn('make_directory','Create a directory.',{'path':{'type':'string'}},['path']),
  fn('search_text','Regex search across workspace text.',{'query':{'type':'string'},'max_results':{'type':'integer'}},['query']),
@@ -152,7 +152,15 @@ def _dispatch_impl(ctx,name,a):
     # and a silently mangled file.
     if not expected:raise ConcurrentEditError('replacing a line range requires expected_hash; '
      f're-read {path} and pass its sha256 along with the line numbers you saw.')
-    updated=replace_lines(original,int(a['start_line']),int(a.get('end_line') or a['start_line']),a['new'])
+    # end_line is required rather than defaulting to start_line. Defaulting reads as
+    # "insert here" to a model rewriting a region, and silently replaced one line
+    # instead — duplicating the body it meant to supersede. The result is valid
+    # Python, so no syntax check catches it; only stating the range can.
+    if a.get('end_line') is None:raise ValueError(
+     f'replace_text on {path} needs end_line: start_line..end_line is REPLACED verbatim, '
+     'and omitting end_line would overwrite only that one line. Pass end_line equal to '
+     'start_line to replace a single line, or the last line of the region you are rewriting.')
+    updated=replace_lines(original,int(a['start_line']),int(a['end_line']),a['new'])
    else:
     updated=patch_or_replace(original,path,a.get('patch'),a.get('old'),a.get('new'),int(a.get('occurrence',1)),bool(a.get('fuzzy',False)))
    ensure_no_syntax_regression(path,original,updated)

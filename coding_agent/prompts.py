@@ -22,9 +22,9 @@ EDITING SAFETY
   or replacing a line range with start_line/end_line: those edits cannot check
   themselves against the current text, so without the hash they are refused.
 - Prefer apply_patch or replace_text over rewriting an entire file.
-- start_line/end_line replaces that range VERBATIM and end_line defaults to
-  start_line. To insert without deleting, include the surrounding lines in the range
-  and repeat them in `new`, or use an exact-anchor replacement instead.
+- start_line/end_line replaces that range VERBATIM; both are required together.
+  It never inserts. To add code, cover the region you are rewriting with the range
+  and include the surviving lines in `new`, or use an exact-anchor replacement.
 - Keep edits inside the size limits the tool schema declares; oversized replacements
   are refused. Change the specific regions you mean rather than restating a file.
 - An edit that would leave a .py file unparseable is refused: re-read and retry

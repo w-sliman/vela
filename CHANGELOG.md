@@ -61,6 +61,12 @@ in unit tests were wrong in practice.
   line range — now require `expected_hash` instead of merely recommending it. That
   guard existed but was opt-in, and the model simply omitted it: `write_file` with no
   hash silently destroyed a concurrent edit.
+- **`end_line` defaulted to `start_line`, and that default read as "insert".** Caught
+  on the live re-run: a model passed `start_line: 1` meaning "rewrite this file",
+  only line 1 was replaced, and the new version was inserted above the old one with
+  the body duplicated. It reported success, and the result is *valid Python* — so
+  neither the syntax guard nor any check could catch it. `end_line` is now required
+  whenever `start_line` is given; pass `end_line == start_line` to replace one line.
 - **Context percentages were measured against the configured window** rather than the
   one in force, so `/usage` and the turn footer reported `128.0k` while the agent was
   actually running on a learned 65,536 — understating real pressure roughly twofold.

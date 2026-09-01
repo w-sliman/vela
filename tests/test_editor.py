@@ -143,3 +143,30 @@ def test_text_mode_requires_old_when_no_line_range(tmp_path):
     result = dispatch(ctx, 'replace_text', {'path': 'app.py', 'new': 'value = 2\n'})
     assert '"status": "error"' in result
     assert 'provide patch or old/new' in result or 'old' in result
+
+
+def test_line_mode_requires_end_line(tmp_path):
+    """Observed live: a model passed start_line=1 meaning "rewrite the file", end_line
+    defaulted to start_line, and only line 1 was replaced — inserting the new version
+    above the old one and duplicating the body. The result reported success and parses
+    as valid Python, so no syntax check can catch it; the range must be stated."""
+    ctx = context(tmp_path)
+    body = 'def f():\n    total = 1\n    return total\n'
+    dispatch(ctx, 'write_file', {'path': 'm.py', 'content': body})
+    result = json.loads(dispatch(ctx, 'replace_text',
+                                 {'path': 'm.py', 'start_line': 1,
+                                  'new': 'def f():\n    if True:\n        return 0\n    return 1\n',
+                                  'expected_hash': _hash(ctx, 'm.py')}))
+    assert result['status'] == 'error' and 'needs end_line' in result['message']
+    assert (tmp_path / 'm.py').read_text() == body, 'nothing written'
+
+
+def test_line_mode_accepts_an_explicit_single_line_range(tmp_path):
+    """Stating start_line == end_line is unambiguous and must still work."""
+    ctx = context(tmp_path)
+    dispatch(ctx, 'write_file', {'path': 'm.py', 'content': 'a = 1\nb = 2\n'})
+    result = dispatch(ctx, 'replace_text',
+                      {'path': 'm.py', 'start_line': 1, 'end_line': 1, 'new': 'a = 9\n',
+                       'expected_hash': _hash(ctx, 'm.py')})
+    assert '"status": "completed"' in result
+    assert (tmp_path / 'm.py').read_text() == 'a = 9\nb = 2\n'
