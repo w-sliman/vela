@@ -214,6 +214,36 @@ pytest -q
 
 The tests do not call the LLM.
 
+## Known limitations
+
+Stated plainly, because each of these is a deliberate boundary rather than an
+oversight.
+
+- **This is a developer tool, not a sandbox.** Approved shell commands run as your
+  local user with your permissions. The workspace bounds *file* access; it does not
+  bound what an approved command can do. Point it at a disposable copy of a project,
+  not your main checkout, and read what you approve.
+- **Prompt-injection resistance is explicitly not a security boundary.** A workspace
+  is untrusted input — including any convention files it ships. The deterministic policy layer
+  (command classification, path containment, URL judging) is the only real control
+  point, which is why those checks live in Python and never in the prompt. A
+  sufficiently persuasive repository can influence what the model *asks* for; it
+  cannot widen what the executor *allows*.
+- **Exercised against one backend.** Development and end-to-end testing ran against
+  llama.cpp serving a local model. The transport, context-window and reduction layers
+  are written to be provider-neutral and are unit-tested as such, but every defect
+  found in live use so far came from one of those layers being wrong about a specific
+  server's behaviour. Expect a comparable shake-out on a backend it has not met.
+- **Model-dependent quality.** The deterministic layer holds regardless, but how good
+  the *work* is tracks the model driving it. A small local model produces more failed
+  edits and more retries; the guards turn those into refusals with recovery guidance
+  rather than silent corruption, which is the point.
+- **Opt-in integrations are lightly exercised.** `CODER_ENABLE_SANDBOX`,
+  `CODER_ENABLE_GITHUB` and `browser_open` are off by default and have had far less
+  real-world use than the core loop.
+- **Unreleased.** Nothing here is published or tagged; the changelog records
+  development history rather than shipped versions.
+
 ## Recommended workflow
 
 Give the agent explicit constraints, for example:

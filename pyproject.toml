@@ -3,6 +3,8 @@ name = "workspace-coding-agent"
 version = "1.2.0"
 description = "A venv-native, OpenAI-compatible coding agent with guarded tools, memory, telemetry, browser/GitHub integrations and optional sandboxing."
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
   "openai>=1.100.0",
   "rich>=14.0.0",
