@@ -109,6 +109,14 @@ def test_gate_disabled_by_config(tmp_path):
     assert len(p.calls) == 1
 
 
-def test_verify_gate_config_default(monkeypatch, tmp_path):
+def test_verify_gate_is_on_by_default(monkeypatch, tmp_path):
+    """Measured on one task: with the gate off the model edited a file and declared
+    itself done having run nothing; with it on it ran the tests."""
     monkeypatch.setenv('OPENAI_API_KEY', 'k'); monkeypatch.setenv('OPENAI_MODEL', 'm')
+    assert Config.from_env(str(tmp_path)).verify_gate is True
+
+
+def test_verify_gate_can_be_switched_off(monkeypatch, tmp_path):
+    monkeypatch.setenv('OPENAI_API_KEY', 'k'); monkeypatch.setenv('OPENAI_MODEL', 'm')
+    monkeypatch.setenv('CODER_VERIFY_GATE', '0')
     assert Config.from_env(str(tmp_path)).verify_gate is False

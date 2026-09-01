@@ -5,6 +5,14 @@ version headings below record development history rather than shipped releases.
 
 ## Unreleased
 
+### The verify gate is on by default
+Measured as an A/B on one task ("add a method, do not run any commands or tests"):
+with the gate off the model made the edit in three tool calls and declared itself
+done, having run nothing; with it on it was nudged once, ran the suite, and passed.
+It fires at most once per request and only when todos are open or an edit was never
+followed by a passing check, so a model that already verified pays nothing.
+`CODER_VERIFY_GATE=0` restores the old behaviour.
+
 ### Findings from the first end-to-end run against a live model
 Everything below was found by driving the REPL against a real llama.cpp endpoint
 rather than by reading the code. The safety layer held throughout — path, command
