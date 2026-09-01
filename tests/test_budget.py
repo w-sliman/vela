@@ -432,3 +432,14 @@ def test_forced_reduction_after_a_rejection_walks_the_whole_ladder(tmp_path):
                if json.loads(x)['kind'] == 'budget_reduced']
     assert methods and methods[0] == 'elide_result' and 'drop_oldest' not in methods
     assert not orphaned(agent.history)
+
+
+def test_elision_stub_does_not_invite_the_call_that_caused_the_pressure():
+    """Advising a re-run livelocked a real session: the fresh result was just as
+    large, was elided again, and the task never progressed."""
+    history = _one_turn(results=1, size=9000)
+    out, _ = ContextBudget(1000).elide_largest_result(history)
+    stub = json.loads(out[2].output)
+    assert stub['status'] == ELIDED_STATUS
+    assert 'do not re-run' in stub['recovery'].lower()
+    assert 'search_text' in stub['recovery'], 'it must name a cheaper way to get detail'

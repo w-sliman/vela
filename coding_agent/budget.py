@@ -163,10 +163,19 @@ class ContextBudget:
         if not targets:return list(history),0
         idx=max(targets,key=lambda i:len(history[i].output))
         victim=history[idx]
+        # The recovery advice must not invite the action that caused the pressure.
+        # Telling the model to re-run the tool produced a livelock in real use: the
+        # fresh result was just as large, was elided again, and the task never
+        # progressed. Under a full context the useful moves are to record what was
+        # already learned and to read less next time.
         stub=json.dumps({'status':ELIDED_STATUS,'tool':victim.name or 'tool',
                          'original_chars':len(victim.output),
-                         'recovery':'This result was dropped to fit the context window. '
-                                    'Re-run the tool if you still need its content.'})
+                         'recovery':'The conversation exceeded the context window, so this '
+                                    'result was dropped to make room. Do NOT re-run the same '
+                                    'call — it would be dropped again. Write down what you '
+                                    'already concluded from it, and if you still need detail '
+                                    'ask for less: a line range, search_text, or search_symbols '
+                                    'rather than a whole file.'})
         freed=len(victim.output)-len(stub)
         if freed<=0:return list(history),0
         out=list(history)

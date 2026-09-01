@@ -27,6 +27,12 @@ in unit tests were wrong in practice.
   elision keeps every call/result pair intact while discarding content the model can
   simply read again. The forced reduction after a server rejection walks the same
   ladder instead of dropping outright.
+- **The elision stub's own advice caused a livelock.** It told the model to re-run
+  the tool for content dropped under context pressure; the fresh result was just as
+  large, was elided again, and a real 8k-window run ended with no summaries and every
+  todo open. The advice now says not to repeat the call, and points at the cheaper
+  reads (a line range, `search_text`, `search_symbols`). The same run then completed,
+  covering every file and stating plainly which one it could not read in full.
 - **A cached probe outranked the operator's own setting.** Probe results were stored
   in the same cache that was read back as "learned", so from the second session
   onwards `CODER_CONTEXT_WINDOW` was silently ignored on any endpoint already
