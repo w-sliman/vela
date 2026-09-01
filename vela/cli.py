@@ -35,7 +35,7 @@ def make_approval_callback(mode):
         return lambda command,reason: False
     return approval_callback
 def show_banner(c):
-    console.print(Panel.fit(f'[bold cyan]Workspace Coding Agent v{__version__}[/bold cyan]\n[dim]Inspect • Edit • Run • Test • Review[/dim]\n\nWorkspace: [bold]{c.workspace}[/bold]\nModel: [bold]{c.model or "not configured"}[/bold]\nEndpoint: [bold]{c.base_url or "OpenAI default"}[/bold]\nAPI: [bold]{c.api_mode}[/bold]\nApproval: [bold]{c.approval_mode}[/bold]',border_style='cyan'))
+    console.print(Panel.fit(f'[bold cyan]Vela v{__version__}[/bold cyan]\n[dim]Inspect • Edit • Run • Test • Review[/dim]\n\nWorkspace: [bold]{c.workspace}[/bold]\nModel: [bold]{c.model or "not configured"}[/bold]\nEndpoint: [bold]{c.base_url or "OpenAI default"}[/bold]\nAPI: [bold]{c.api_mode}[/bold]\nApproval: [bold]{c.approval_mode}[/bold]',border_style='cyan'))
     if getattr(c, 'approval_edits', False):
         console.print('[yellow]Edit approval ON — every file change asks first[/yellow]')
 def main():

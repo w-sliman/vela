@@ -2,8 +2,8 @@ import io
 
 from rich.console import Console
 
-from coding_agent.events import AgentEvent
-from coding_agent.ui import DebugUI, _fmt_tokens
+from vela.events import AgentEvent
+from vela.ui import DebugUI, _fmt_tokens
 
 
 def render(enabled=False):

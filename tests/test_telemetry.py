@@ -1,6 +1,6 @@
 from types import SimpleNamespace as NS
 
-from coding_agent.telemetry import Metrics, USAGE_ADVICE, extract_usage
+from vela.telemetry import Metrics, USAGE_ADVICE, extract_usage
 
 
 def test_responses_shape():

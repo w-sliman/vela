@@ -8,7 +8,7 @@ network fails fast instead of hanging.
 """
 import pytest
 
-from coding_agent.config import Config
+from vela.config import Config
 
 DEFAULTS = dict(
     api_key='test-key', base_url='http://localhost:9/v1', model='model-x', api_mode='chat',

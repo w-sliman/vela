@@ -9,9 +9,9 @@ import json
 
 import pytest
 
-from coding_agent.llm import CodingAgent
-from coding_agent.session import Session
-from coding_agent.window import (
+from vela.llm import CodingAgent
+from vela.session import Session
+from vela.window import (
     WindowStore,
     looks_like_overflow,
     parse_limit,
@@ -83,7 +83,7 @@ def _fake_http(monkeypatch, responses):
             if fragment in url:
                 return payload
         raise RuntimeError(f'404 {url}')
-    monkeypatch.setattr('coding_agent.window._get_json', fake)
+    monkeypatch.setattr('vela.window._get_json', fake)
 
 
 def test_vllm_max_model_len_is_read_for_the_right_model(monkeypatch):
@@ -173,7 +173,7 @@ def test_a_learned_value_beats_configuration(tmp_path):
 
 def test_explicit_configuration_skips_probing(tmp_path, monkeypatch):
     probed = []
-    monkeypatch.setattr('coding_agent.window.probe',
+    monkeypatch.setattr('vela.window.probe',
                         lambda *a, **k: probed.append(a) or 4096)
     cfg = make_config(tmp_path, context_window_tokens=64000, context_window_explicit=True)
     assert resolve(cfg, WindowStore(tmp_path)) == (64000, 'configured')
@@ -181,7 +181,7 @@ def test_explicit_configuration_skips_probing(tmp_path, monkeypatch):
 
 
 def test_probe_is_used_when_the_window_was_not_stated(tmp_path, monkeypatch):
-    monkeypatch.setattr('coding_agent.window.probe', lambda *a, **k: 4096)
+    monkeypatch.setattr('vela.window.probe', lambda *a, **k: 4096)
     cfg = make_config(tmp_path, context_window_tokens=128000, context_window_explicit=False)
     assert resolve(cfg, WindowStore(tmp_path)) == (4096, 'probed')
     assert WindowStore(tmp_path).get(cfg.base_url, cfg.model) == 4096, 'probe result cached'
@@ -189,9 +189,9 @@ def test_probe_is_used_when_the_window_was_not_stated(tmp_path, monkeypatch):
 
 def test_a_cached_probe_does_not_outrank_explicit_configuration(tmp_path, monkeypatch):
     """The regression this provenance exists for: a probe cached by an earlier
-    session used to read back as a rejection, silently voiding CODER_CONTEXT_WINDOW
+    session used to read back as a rejection, silently voiding VELA_CONTEXT_WINDOW
     from the second run onwards."""
-    monkeypatch.setattr('coding_agent.window.probe', lambda *a, **k: 65536)
+    monkeypatch.setattr('vela.window.probe', lambda *a, **k: 65536)
     loose = make_config(tmp_path, context_window_tokens=128000, context_window_explicit=False)
     assert resolve(loose, WindowStore(tmp_path)) == (65536, 'probed')   # session one caches it
 

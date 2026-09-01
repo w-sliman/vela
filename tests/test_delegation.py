@@ -8,8 +8,8 @@ import json
 
 import pytest
 
-from coding_agent.agents import Delegator
-from coding_agent.tools import dispatch
+from vela.agents import Delegator
+from vela.tools import dispatch
 from tests.conftest import make_config
 
 
@@ -49,7 +49,7 @@ def test_a_persistent_failure_still_surfaces(tmp_path):
 
 
 def test_retries_are_announced_when_an_event_bus_is_given(tmp_path):
-    from coding_agent.events import EventBus
+    from vela.events import EventBus
     seen = []
     d = Delegator(make_config(tmp_path, request_retries=2), '', EventBus(lambda e: seen.append(e.message)))
     d.provider = Flaky(failures=1)
@@ -87,13 +87,13 @@ def test_workspace_context_and_task_reach_the_model(tmp_path):
 
 
 def test_dispatch_reports_a_missing_delegator_rather_than_crashing(tmp_path):
-    from coding_agent.browser import Browser
-    from coding_agent.git import Git
-    from coding_agent.github import GitHub
-    from coding_agent.sandbox import DockerSandbox
-    from coding_agent.shell import Shell
-    from coding_agent.tools import ToolContext
-    from coding_agent.workspace import Workspace
+    from vela.browser import Browser
+    from vela.git import Git
+    from vela.github import GitHub
+    from vela.sandbox import DockerSandbox
+    from vela.shell import Shell
+    from vela.tools import ToolContext
+    from vela.workspace import Workspace
 
     c = make_config(tmp_path)
     ctx = ToolContext(c, Workspace(tmp_path), Shell(c), lambda *_: True, Git(tmp_path),

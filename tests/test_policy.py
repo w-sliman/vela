@@ -1,6 +1,6 @@
 from pathlib import Path
 import pytest
-from coding_agent.policy import classify_command, ensure_within
+from vela.policy import classify_command, ensure_within
 
 
 def test_escape_is_rejected(tmp_path: Path):

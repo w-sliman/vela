@@ -1,5 +1,5 @@
 [project]
-name = "workspace-coding-agent"
+name = "vela"
 version = "1.2.0"
 description = "A venv-native, OpenAI-compatible coding agent with guarded tools, memory, telemetry, browser/GitHub integrations and optional sandboxing."
 requires-python = ">=3.11"
@@ -20,7 +20,7 @@ github = []
 dev = ["pytest>=8.0", "ruff>=0.8", "mypy>=1.13"]
 
 [project.scripts]
-coder = "coding_agent.cli:main"
+vela = "vela.cli:main"
 
 [tool.ruff]
 # Single source of truth for both scripts/check.sh and CI, so the two cannot drift.

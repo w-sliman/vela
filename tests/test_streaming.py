@@ -1,9 +1,9 @@
 from types import SimpleNamespace as NS
 
 from tests.conftest import make_config
-from coding_agent.conversation import AssistantMsg
-from coding_agent.llm import CodingAgent
-from coding_agent.session import Session
+from vela.conversation import AssistantMsg
+from vela.llm import CodingAgent
+from vela.session import Session
 
 
 def make_agent(tmp_path, streams, **overrides):
@@ -49,7 +49,7 @@ def test_text_streaming_emits_tokens_and_returns_full_text(tmp_path):
 
 
 def test_tool_call_fragments_assemble_and_dispatch(tmp_path):
-    import coding_agent.llm as llm_mod
+    import vela.llm as llm_mod
     calls_seen = []
     orig = llm_mod.dispatch
     llm_mod.dispatch = lambda ctx, name, args: calls_seen.append((name, args)) or '{}'
@@ -80,7 +80,7 @@ def test_stream_disabled_uses_buffered_path(tmp_path):
 
 
 def test_stream_without_usage_counts_missing():
-    from coding_agent.telemetry import Metrics
+    from vela.telemetry import Metrics
     m = Metrics()
     m.add(None, 1.0)
     assert m.missing_usage == 1

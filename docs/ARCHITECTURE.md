@@ -36,7 +36,7 @@ The central design principle is: **the LLM proposes; deterministic Python execut
 
 ## Components
 
-- `cli.py`: terminal REPL, slash commands, approval prompts (honors `CODER_APPROVAL_MODE`), live token/context HUD.
+- `cli.py`: terminal REPL, slash commands, approval prompts (honors `VELA_APPROVAL_MODE`), live token/context HUD.
 - `conversation.py`: the canonical, provider-neutral conversation items
   (`UserMsg`, `AssistantMsg`, `ToolResult`). History holds only these.
 - `transports.py`: the **only** place a provider wire format exists. Each transport
@@ -70,7 +70,7 @@ The central design principle is: **the LLM proposes; deterministic Python execut
   with identical text are pruned individually rather than as a group.
 - `memory.py`, `events.py`, `ui.py`, `agents.py`, `json_repair.py`, `prompts.py`, `config.py`: persistent memory with lexical retrieval/scoring, event bus, rendering, sub-agent delegation, defensive tool-JSON parsing, system prompt, environment configuration.
 - `browser.py`, `github.py`, `sandbox.py`: opt-in integrations, all disabled unless
-  explicitly enabled by environment (`CODER_ENABLE_BROWSER` / `_GITHUB` / `_SANDBOX`).
+  explicitly enabled by environment (`VELA_ENABLE_BROWSER` / `_GITHUB` / `_SANDBOX`).
   When enabled, the network ones route every target through `net.py` — the URL is
   chosen by the model, and the model reads untrusted repository content.
 
@@ -153,7 +153,7 @@ send(payload)
   replaced. A reduction that reports success but frees nothing is treated as a
   failure and the blunter method runs instead, so the loop cannot spin.
 - **The limit is derived, not tuned.** It is the window minus headroom for the reply
-  (`CODER_REPLY_RESERVE_TOKENS`, default window/8), rather than a percentage someone
+  (`VELA_REPLY_RESERVE_TOKENS`, default window/8), rather than a percentage someone
   picked. Headroom is capped at half the window so it can never swallow it.
 ### Knowing the window
 
@@ -167,9 +167,9 @@ So the window is learned, from three sources in descending authority:
 1. **A rejection.** A server refusing an oversized request states its real limit
    (`"maximum context length is 8192 tokens"`). Parsing that is provider-agnostic,
    costs one failed request once per model, and is ground truth. It overrides even an
-   explicit `CODER_CONTEXT_WINDOW` — observation outranks configuration, because the
+   explicit `VELA_CONTEXT_WINDOW` — observation outranks configuration, because the
    server is not wrong about its own ceiling. Learned values are cached per
-   (endpoint, model) in `.coder-agent/windows.json`.
+   (endpoint, model) in `.vela/windows.json`.
 2. **A probe** of local servers that do report it, tried at startup unless the window
    was set by hand: vLLM's `max_model_len` on `/v1/models`, llama.cpp's
    `default_generation_settings.n_ctx` on `/props`, Ollama's `num_ctx` from

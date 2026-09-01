@@ -4,10 +4,10 @@ from types import SimpleNamespace as NS
 import pytest
 
 from tests.conftest import make_config
-from coding_agent.llm import CodingAgent
-from coding_agent.budget import orphaned as _orphaned
-from coding_agent.conversation import AssistantMsg, ToolCall, ToolResult, UserMsg
-from coding_agent.session import Session
+from vela.llm import CodingAgent
+from vela.budget import orphaned as _orphaned
+from vela.conversation import AssistantMsg, ToolCall, ToolResult, UserMsg
+from vela.session import Session
 
 
 def cfg(tmp_path, **over):
@@ -73,7 +73,7 @@ def test_keep_turns_is_the_operators_setting_not_the_summarizers(tmp_path):
 def test_default_keep_leaves_enough_turns_to_compact_again(tmp_path):
     """keep=1 yields `[summary] + one turn` = two turns, which is exactly where
     compaction refuses; the default must stay clear of that trap."""
-    from coding_agent.llm import _turns
+    from vela.llm import _turns
     p = FakeProvider(json.dumps({'summary': 's'}))
     agent = agent_with(tmp_path, p)
     agent.history = hist(6)

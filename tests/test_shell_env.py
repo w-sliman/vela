@@ -1,5 +1,5 @@
 from tests.conftest import make_config
-from coding_agent.shell import Shell
+from vela.shell import Shell
 
 
 def config(tmp_path):

@@ -411,7 +411,7 @@ class CodingAgent:
         """Adopt the context limit a rejection stated, if it stated one.
 
         Ground truth beats every other source, including an explicit
-        CODER_CONTEXT_WINDOW: the server is not wrong about its own ceiling. The
+        VELA_CONTEXT_WINDOW: the server is not wrong about its own ceiling. The
         value is cached per (endpoint, model) so this failed request is paid once,
         not once per session. Returns True when the request is worth retrying.
         """

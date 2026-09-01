@@ -2,13 +2,13 @@ import json
 import subprocess
 
 from tests.conftest import make_config
-from coding_agent.tools import ToolContext, dispatch
-from coding_agent.workspace import Workspace
-from coding_agent.shell import Shell
-from coding_agent.git import Git
-from coding_agent.browser import Browser
-from coding_agent.github import GitHub
-from coding_agent.sandbox import DockerSandbox
+from vela.tools import ToolContext, dispatch
+from vela.workspace import Workspace
+from vela.shell import Shell
+from vela.git import Git
+from vela.browser import Browser
+from vela.github import GitHub
+from vela.sandbox import DockerSandbox
 
 
 def make_ctx(tmp_path, callback):

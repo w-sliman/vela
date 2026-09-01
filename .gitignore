@@ -3,7 +3,7 @@ __pycache__/
 .pytest_cache/
 .env
 *.pyc
-.coder-agent/sessions/
+.vela/sessions/
 # The agent's scratch workspace: whatever it is pointed at is the user's own work
 # or throwaway demo material, never part of this project. The directory is created
 # on first run, so nothing here needs to ship.

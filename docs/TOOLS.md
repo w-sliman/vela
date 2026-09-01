@@ -11,7 +11,7 @@ traceback. Edit tools return structured recovery guidance on failure.
   entries, and the result carries a `truncated` flag plus advice to narrow the path
   or depth — a silently capped listing otherwise reads as a complete one.
 - **read_file** — UTF-8 content plus SHA-256, and a `truncated` flag. Pass the hash
-  as `expected_hash` when editing. Files longer than `CODER_MAX_FILE_CHARS` come back
+  as `expected_hash` when editing. Files longer than `VELA_MAX_FILE_CHARS` come back
   cut short with a truncation marker and a warning: the hash still covers the *whole*
   file, so the stale-hash guard cannot detect a truncated round-trip. `write_file`
   therefore refuses any content containing that marker — edit large files with
@@ -30,7 +30,7 @@ traceback. Edit tools return structured recovery guidance on failure.
   headers return the correct `@@ -a,b +c,d @@` format plus advice to switch tools.
 - **make_directory**
 
-Every successful edit auto-commits a git checkpoint (`CODER_AUTO_CHECKPOINT=0`
+Every successful edit auto-commits a git checkpoint (`VELA_AUTO_CHECKPOINT=0`
 disables); `/undo` reverts the most recent one. Only agent checkpoints (commit
 messages starting with `auto: `) are undoable, and only when that checkpoint is
 the latest commit — user commits are never reverted.
@@ -47,9 +47,9 @@ the latest commit — user commits are never reverted.
   and host-sensitive-absolute-path commands always require approval. The allow-list
   covers recognized development commands, which includes code-executing ones like
   `python` and `pytest` — see `docs/SECURITY.md`. A model-supplied `timeout` is clamped
-  to 1..`CODER_COMMAND_TIMEOUT`; the model may ask for less than the ceiling, never more. Child processes inherit a scrubbed environment (API keys/tokens/secrets removed).
+  to 1..`VELA_COMMAND_TIMEOUT`; the model may ask for less than the ceiling, never more. Child processes inherit a scrubbed environment (API keys/tokens/secrets removed).
 - **run_tests** — pytest selection inferred from changed paths, or an explicit command.
-- **sandbox_run** — opt-in no-network Docker container (`CODER_ENABLE_SANDBOX=1`). Off by default.
+- **sandbox_run** — opt-in no-network Docker container (`VELA_ENABLE_SANDBOX=1`). Off by default.
 
 ## Git
 
@@ -57,7 +57,7 @@ the latest commit — user commits are never reverted.
 
 ## Memory, delegation, integrations
 
-- **remember** / **recall_memory** — persistent project memory (`.coder-agent/memory.json`). `remember` accepts optional `tags`/`paths` arrays that sharpen later lexical retrieval; duplicates refresh instead of piling up.
+- **remember** / **recall_memory** — persistent project memory (`.vela/memory.json`). `remember` accepts optional `tags`/`paths` arrays that sharpen later lexical retrieval; duplicates refresh instead of piling up.
 - **forget_memory** — delete memory records by id prefix (ids visible via `recall_memory` or `/memory`).
 - **write_todos** — replace the agent's working todo list (see below). Deterministic validation: ≤12 items, one imperative line each (≤120 chars), statuses `pending/in_progress/done` (unknown → pending), exact duplicates dropped. Python diffs old-vs-new and journals the change.
 - **delegate_role** — isolated planner/reviewer sub-agent; advisory only, cannot edit
@@ -77,4 +77,4 @@ The todo queue is the model's *visible intent* for non-trivial tasks:
 - **Always in context**: the current list is re-injected into every model request (after memory recall), so context reduction cannot erase it. This — not hard gating — is what keeps the model honest about its own plan.
 - **Observable**: updates render live in the REPL, `/todos` inspects on demand, each turn ends with `todos: N/M done`, and `todos_updated` trace events record every diff (completed/reopened/added/removed).
 - **Behavioral contract** lives in the system prompt: announce steps before multi-step work, exactly one `in_progress`, mark done immediately with evidence, revise-first when instructions change, skip for trivial asks.
-- `CODER_TODOS=0` disables injection/rendering.
+- `VELA_TODOS=0` disables injection/rendering.

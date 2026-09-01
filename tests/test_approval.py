@@ -1,4 +1,4 @@
-from coding_agent.cli import make_approval_callback
+from vela.cli import make_approval_callback
 
 
 def test_auto_mode_allows():

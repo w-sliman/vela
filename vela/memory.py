@@ -85,7 +85,7 @@ def select_records(records,query,active_paths=(),top_k=4,min_score=0.5,max_chars
 def _now_iso():return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 class ProjectMemory:
-    def __init__(self,root):self.path=root/'.coder-agent'/'memory.json';self.path.parent.mkdir(parents=True,exist_ok=True)
+    def __init__(self,root):self.path=root/'.vela'/'memory.json';self.path.parent.mkdir(parents=True,exist_ok=True)
     def _read(self):
         if not self.path.exists():return {'version':2,'records':[]}
         try:

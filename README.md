@@ -1,4 +1,4 @@
-# Workspace Coding Agent
+# Vela
 
 A local coding agent built on one principle: **the LLM proposes; deterministic Python
 executes and enforces policy.**
@@ -60,14 +60,14 @@ OPENAI_MODEL=your_tool_capable_model
 Run:
 
 ```bash
-python -m coding_agent --workspace ./workspace
+python -m vela --workspace ./workspace
 ```
 
 Or install the package in editable mode:
 
 ```bash
 pip install -e .
-coder --workspace ./workspace
+vela --workspace ./workspace
 ```
 
 ## First tasks to try
@@ -103,32 +103,32 @@ review this repository for correctness issues; do not modify files
 
 ## Observability & context management
 
-- Assistant text streams live as tokens (chat transport; `CODER_STREAM=0` disables).
+- Assistant text streams live as tokens (chat transport; `VELA_STREAM=0` disables).
 - Every model call journals an exact `usage` event (input/output tokens) to the session trace; calls without server-reported usage are counted and flagged, never estimated.
 - A live status line shows tokens in/out/total plus current context fill after each model turn; `/usage` shows session totals.
 - The context window is worked out rather than assumed: probed from local servers
   that report it (vLLM, llama.cpp, Ollama), otherwise learned from the first
   oversized-request rejection and cached per endpoint+model with the source it came
   from. A limit the server states by rejecting a request overrides configuration; a
-  probe does not, so setting `CODER_CONTEXT_WINDOW` by hand still means something.
+  probe does not, so setting `VELA_CONTEXT_WINDOW` by hand still means something.
 - Before every request the outgoing payload is measured against the context budget
   (that window minus reply headroom) and the conversation is reduced until it fits,
-  by a ladder: summarize older turns (`CODER_COMPACT_KEEP_TURNS`, default 3, are kept
+  by a ladder: summarize older turns (`VELA_COMPACT_KEEP_TURNS`, default 3, are kept
   verbatim), then elide the largest tool results — keeping every call/result pair
   intact, so the model is told what it lost and can re-read it — and only then drop
   the oldest turn. The middle rung is what lets a single huge request survive, where
   there are no older turns to summarize. Token estimates self-calibrate from any usage
-  the server reports. `CODER_AUTO_COMPACT=0` disables reduction.
+  the server reports. `VELA_AUTO_COMPACT=0` disables reduction.
 - There is no turn limit: long tasks run as long as they need, bounded by the context
   budget and by Ctrl+C.
-- Failed model requests retry with exponential backoff (`CODER_REQUEST_RETRIES`, default 2) before falling back from the Responses API to Chat Completions. Deterministic rejections (a malformed request) are not retried — they are re-raised immediately so the fallback happens while it is still cheap.
+- Failed model requests retry with exponential backoff (`VELA_REQUEST_RETRIES`, default 2) before falling back from the Responses API to Chat Completions. Deterministic rejections (a malformed request) are not retried — they are re-raised immediately so the fallback happens while it is still cheap.
 - Subprocesses run with secret-shaped environment variables (API keys, tokens) removed.
-- Each successful edit auto-commits a git checkpoint in the workspace (`CODER_AUTO_CHECKPOINT=0` disables); `/undo` reverts the last one. Checkpoints cover your work only — the agent's own state under `.coder-agent/` is never committed, so undoing an edit cannot rewrite session traces.
+- Each successful edit auto-commits a git checkpoint in the workspace (`VELA_AUTO_CHECKPOINT=0` disables); `/undo` reverts the last one. Checkpoints cover your work only — the agent's own state under `.vela/` is never committed, so undoing an edit cannot rewrite session traces.
 - Edits fail closed: an edit that would newly break a parseable Python file is refused, arguments over the schema's declared limits are refused, and edits that cannot check themselves against the current text (overwriting an existing file, replacing a line range) require the `expected_hash` from `read_file`.
-- Relevant project memories are retrieved lexically once per user request and attached as advisory context; the ids used are shown after each turn (`memory: r2, r7`). Disable with `CODER_MEMORY_INJECT=0`; tune via `CODER_MEMORY_TOPK`, `CODER_MEMORY_MAX_CHARS`, `CODER_MEMORY_MIN_SCORE`. `/compact` also distills durable decisions into memory (`CODER_MEMORY_DISTILL=0` disables). See `docs/MEMORY.md`.
-- Memory stays curated automatically: writes enforce a record cap (`CODER_MEMORY_MAX_RECORDS`, coldest dropped first) and an optional age limit (`CODER_MEMORY_TTL_DAYS`, off by default); `/memory consolidate [focus]` asks the model to group paraphrased duplicates and merges them deterministically.
-- For non-trivial tasks the agent maintains a visible working todo list (`write_todos` tool): announced before work starts, updated live as steps finish, re-injected into every model request so it survives context reduction, and journaled with per-change diffs. Inspect anytime with `/todos`; disable via `CODER_TODOS=0`.
-- Verify gate (on by default, `CODER_VERIFY_GATE=0` disables): if the model tries to finish while todos are open or edits were never followed by a passing check, it gets one corrective nudge first. On the same task with the gate off the model edited a file and declared itself done having run nothing; with it on it ran the tests. It costs at most one extra check per request.
+- Relevant project memories are retrieved lexically once per user request and attached as advisory context; the ids used are shown after each turn (`memory: r2, r7`). Disable with `VELA_MEMORY_INJECT=0`; tune via `VELA_MEMORY_TOPK`, `VELA_MEMORY_MAX_CHARS`, `VELA_MEMORY_MIN_SCORE`. `/compact` also distills durable decisions into memory (`VELA_MEMORY_DISTILL=0` disables). See `docs/MEMORY.md`.
+- Memory stays curated automatically: writes enforce a record cap (`VELA_MEMORY_MAX_RECORDS`, coldest dropped first) and an optional age limit (`VELA_MEMORY_TTL_DAYS`, off by default); `/memory consolidate [focus]` asks the model to group paraphrased duplicates and merges them deterministically.
+- For non-trivial tasks the agent maintains a visible working todo list (`write_todos` tool): announced before work starts, updated live as steps finish, re-injected into every model request so it survives context reduction, and journaled with per-change diffs. Inspect anytime with `/todos`; disable via `VELA_TODOS=0`.
+- Verify gate (on by default, `VELA_VERIFY_GATE=0` disables): if the model tries to finish while todos are open or edits were never followed by a passing check, it gets one corrective nudge first. On the same task with the gate off the model edited a file and declared itself done having run nothing; with it on it ran the tests. It costs at most one extra check per request.
 - **Ctrl+C pauses instead of destroying**: an interrupt mid-run closes any dangling tool-call pair, journals the pause, and returns you to the prompt with full context intact. `/continue` resumes exactly where it stopped.
 - Past sessions can be continued: `/resume` rebuilds task state from any recorded trace as a compact digest (never as raw replay), keeping history/pair integrity intact.
 
@@ -159,7 +159,7 @@ and selected with `OPENAI_API_MODE`:
 
 - **Responses API** with function tools;
 - **Chat Completions** with live token streaming (the default in `auto` mode once
-  the Responses path is unavailable, and where `CODER_STREAM` applies).
+  the Responses path is unavailable, and where `VELA_STREAM` applies).
 
 In `auto` mode the agent starts on Responses and falls back to Chat if the transport
 rejects a request — the failure mode local inference servers hit when a model emits
@@ -175,7 +175,7 @@ inspect, change, test, and iterate.
 ## Project layout
 
 ```text
-coding_agent/
+vela/
   cli.py         # Rich REPL, slash commands, approval prompts
   llm.py         # controller loop, compaction, retries, verify gate, pause
   conversation.py# canonical, provider-neutral conversation items
@@ -238,8 +238,8 @@ oversight.
   the *work* is tracks the model driving it. A small local model produces more failed
   edits and more retries; the guards turn those into refusals with recovery guidance
   rather than silent corruption, which is the point.
-- **Opt-in integrations are lightly exercised.** `CODER_ENABLE_SANDBOX`,
-  `CODER_ENABLE_GITHUB` and `browser_open` are off by default and have had far less
+- **Opt-in integrations are lightly exercised.** `VELA_ENABLE_SANDBOX`,
+  `VELA_ENABLE_GITHUB` and `browser_open` are off by default and have had far less
   real-world use than the core loop.
 - **Unreleased.** Nothing here is published or tagged; the changelog records
   development history rather than shipped versions.

@@ -11,7 +11,7 @@ So the window is *learned*, from three sources in descending authority:
    limit. Parsing that is provider-agnostic — it works for every endpoint above,
    costs one failed request once per model, and is ground truth rather than a
    guess. Observation outranks configuration: a learned limit overrides even an
-   explicit `CODER_CONTEXT_WINDOW`, because the server is never wrong about its
+   explicit `VELA_CONTEXT_WINDOW`, because the server is never wrong about its
    own ceiling.
 2. **A probe**, for local servers that do report it (vLLM, llama.cpp, Ollama).
 3. **Configuration**, as the starting assumption.
@@ -20,7 +20,7 @@ Both observed sources are cached per (endpoint, model) so neither the failed
 request nor the probe round-trip is repaid every session — but the cache records
 *which* source produced a value, because they do not carry the same authority. A
 cached probe stored as though it were a rejection outranks the operator's own
-`CODER_CONTEXT_WINDOW` forever, which silently defeats the setting; that is the
+`VELA_CONTEXT_WINDOW` forever, which silently defeats the setting; that is the
 bug this provenance exists to prevent.
 """
 from __future__ import annotations
@@ -210,7 +210,7 @@ class WindowStore:
     """
 
     def __init__(self,root):
-        self.path=root/'.coder-agent'/'windows.json'
+        self.path=root/'.vela'/'windows.json'
 
     def _load(self):
         try:
@@ -257,7 +257,7 @@ def resolve(config,store=None):
     """Best known window at startup, plus where it came from.
 
     Authority, highest first: a rejection (cached or not), then an explicit
-    `CODER_CONTEXT_WINDOW`, then a probe, then the configured default. Setting the
+    `VELA_CONTEXT_WINDOW`, then a probe, then the configured default. Setting the
     window by hand is a stated intention, so it suppresses probing *and* outranks a
     probe cached by an earlier session — only the server contradicting itself may
     override it.

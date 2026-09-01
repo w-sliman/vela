@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timezone
 class Session:
     def __init__(self,workspace):
-        d=workspace/'.coder-agent'/'sessions';d.mkdir(parents=True,exist_ok=True)
+        d=workspace/'.vela'/'sessions';d.mkdir(parents=True,exist_ok=True)
         self.path=d/(datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S-%f')+'.jsonl')
     def record(self,kind,payload):
         with self.path.open('a',encoding='utf-8') as f:

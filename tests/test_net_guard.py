@@ -7,15 +7,15 @@ claimed anywhere, so this check has to be deterministic Python.
 """
 import pytest
 
-from coding_agent.browser import Browser
-from coding_agent.github import GitHub
-from coding_agent.net import BlockedURLError, check_url, get_checked, safe_api_path
+from vela.browser import Browser
+from vela.github import GitHub
+from vela.net import BlockedURLError, check_url, get_checked, safe_api_path
 
 
 def _resolve_to(monkeypatch, address):
     """Pin DNS so the guard is tested, not the network."""
     import ipaddress
-    monkeypatch.setattr('coding_agent.net._resolved_ips',
+    monkeypatch.setattr('vela.net._resolved_ips',
                         lambda host: [ipaddress.ip_address(address)])
 
 
@@ -68,7 +68,7 @@ def test_unresolvable_host_is_refused(monkeypatch):
     import socket
     def boom(host):
         raise socket.gaierror('nope')
-    monkeypatch.setattr('coding_agent.net._resolved_ips', boom)
+    monkeypatch.setattr('vela.net._resolved_ips', boom)
     with pytest.raises(BlockedURLError, match='cannot resolve'):
         check_url('https://nx.example.com/')
 
@@ -105,7 +105,7 @@ def test_a_redirect_onto_a_private_address_is_caught(monkeypatch):
     import ipaddress
     hops = {'https://public.example.com/': '93.184.216.34',
             'http://169.254.169.254/latest/': '169.254.169.254'}
-    monkeypatch.setattr('coding_agent.net._resolved_ips',
+    monkeypatch.setattr('vela.net._resolved_ips',
                         lambda host: [ipaddress.ip_address(
                             '169.254.169.254' if '169.254' in host else '93.184.216.34')])
     monkeypatch.setattr('httpx.get',
@@ -117,7 +117,7 @@ def test_a_redirect_onto_a_private_address_is_caught(monkeypatch):
 
 def test_a_redirect_chain_terminates(monkeypatch):
     import ipaddress
-    monkeypatch.setattr('coding_agent.net._resolved_ips',
+    monkeypatch.setattr('vela.net._resolved_ips',
                         lambda host: [ipaddress.ip_address('93.184.216.34')])
     monkeypatch.setattr('httpx.get',
                         lambda url, **kw: _Resp(redirect_to='https://example.com/loop'))
@@ -127,7 +127,7 @@ def test_a_redirect_chain_terminates(monkeypatch):
 
 def test_a_normal_response_comes_back(monkeypatch):
     import ipaddress
-    monkeypatch.setattr('coding_agent.net._resolved_ips',
+    monkeypatch.setattr('vela.net._resolved_ips',
                         lambda host: [ipaddress.ip_address('93.184.216.34')])
     monkeypatch.setattr('httpx.get', lambda url, **kw: _Resp(text='hello world'))
     assert get_checked('https://example.com/').text == 'hello world'

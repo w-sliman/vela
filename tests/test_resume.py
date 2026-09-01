@@ -2,10 +2,10 @@ import json
 from datetime import datetime, timezone as tz
 
 from tests.conftest import make_config
-from coding_agent.llm import CodingAgent
-from coding_agent.resume import build_digest, list_sessions, resolve_session
-from coding_agent.conversation import UserMsg
-from coding_agent.session import Session
+from vela.llm import CodingAgent
+from vela.resume import build_digest, list_sessions, resolve_session
+from vela.conversation import UserMsg
+from vela.session import Session
 
 
 def ev(kind, payload=None, ts=None):
@@ -14,7 +14,7 @@ def ev(kind, payload=None, ts=None):
 
 
 def write_trace(tmp, name, events):
-    d = tmp / '.coder-agent' / 'sessions'; d.mkdir(parents=True, exist_ok=True)
+    d = tmp / '.vela' / 'sessions'; d.mkdir(parents=True, exist_ok=True)
     p = d / f'{name}.jsonl'
     p.write_text(''.join(json.dumps(e) + '\n' for e in events))
     return p
@@ -23,10 +23,10 @@ def write_trace(tmp, name, events):
 def sample_events():
     return [
         ev('user', {'text': 'refactor llm.py retry logic'}),
-        ev('tool_call', {'name': 'read_file', 'arguments_raw': '{"path": "coding_agent/llm.py"}'}),
+        ev('tool_call', {'name': 'read_file', 'arguments_raw': '{"path": "vela/llm.py"}'}),
         ev('tool_call', {'name': 'replace_text',
-                         'arguments_raw': '{"paths": ["coding_agent/llm.py", "tests/test_telemetry.py"], "new": "x"}'}),
-        ev('tool_call', {'name': 'read_file', 'arguments_raw': '{"path": "coding_agent/llm.py"}'}),  # dup path
+                         'arguments_raw': '{"paths": ["vela/llm.py", "tests/test_telemetry.py"], "new": "x"}'}),
+        ev('tool_call', {'name': 'read_file', 'arguments_raw': '{"path": "vela/llm.py"}'}),  # dup path
         ev('error', {'message': '500 upsteam'}),
         ev('compact', {'compacted': True}),
         ev('assistant', {'text': 'Refactor complete; all 89 tests pass.'}),
@@ -95,10 +95,10 @@ def test_digest_sections_files_dedup_and_counts(tmp_path):
     assert t.startswith('[Resumed session 20260404-000000-000000]')
     assert 'verify current file contents before editing' in t
     assert '1. refactor llm.py retry logic' in t and '2. now update the changelog' in t
-    assert 'coding_agent/llm.py' in t and 'tests/test_telemetry.py' in t
+    assert 'vela/llm.py' in t and 'tests/test_telemetry.py' in t
     assert 'Files touched:' in t
-    assert d['files'].count('coding_agent/llm.py') == 1          # duplicate tool calls deduped
-    assert t.count('coding_agent/llm.py') == 1                   # rendered once overall
+    assert d['files'].count('vela/llm.py') == 1          # duplicate tool calls deduped
+    assert t.count('vela/llm.py') == 1                   # rendered once overall
     assert 'Recorded transport errors: 1' in t
     assert 'Compactions already applied: 1' in t
     assert 'Last assistant message (tail): Refactor complete' in t

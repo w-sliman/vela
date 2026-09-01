@@ -5,7 +5,7 @@ class Browser:
  content, so every target is checked against net.check_url before a request is made."""
  def __init__(self,enabled=False,allow_private=False):self.enabled=enabled;self.allow_private=allow_private
  def _guard(self,url):
-  if not self.enabled:raise PermissionError('browser support disabled; set CODER_ENABLE_BROWSER=1')
+  if not self.enabled:raise PermissionError('browser support disabled; set VELA_ENABLE_BROWSER=1')
   return check_url(url,self.allow_private)
  def fetch(self,url):
   self._guard(url)

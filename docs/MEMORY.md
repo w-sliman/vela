@@ -3,11 +3,11 @@
 The agent has four different kinds of state:
 
 1. **Workspace** — source files are the authoritative state.
-2. **Persistent project memory** — `.coder-agent/memory.json` stores durable facts, decisions, and preferences as records (`id`, `kind`, `text`, `tags`, `paths`, `created`, `last_seen`, `hits`). The `remember` tool writes it (optional `tags`/`paths` sharpen retrieval), `recall_memory` reads all records, and `forget_memory` deletes by id prefix. Exact duplicates update `last_seen` instead of piling up. Legacy bucket-format files are migrated automatically. Memory is advisory; current files and tool results always win.
-3. **Learned endpoint facts** — `.coder-agent/windows.json` caches each
+2. **Persistent project memory** — `.vela/memory.json` stores durable facts, decisions, and preferences as records (`id`, `kind`, `text`, `tags`, `paths`, `created`, `last_seen`, `hits`). The `remember` tool writes it (optional `tags`/`paths` sharpen retrieval), `recall_memory` reads all records, and `forget_memory` deletes by id prefix. Exact duplicates update `last_seen` instead of piling up. Legacy bucket-format files are migrated automatically. Memory is advisory; current files and tool results always win.
+3. **Learned endpoint facts** — `.vela/windows.json` caches each
    (endpoint, model)'s real context window once a server has stated it, so the one
    rejected request that taught it is not repaid every session. Delete it to relearn.
-4. **Session memory** — `.coder-agent/sessions/*.jsonl` records what happened in a run: user requests, tool calls/results, per-model-call exact token `usage`, transport `error`s, `compact`ions, timings, and assistant responses. It is primarily for continuity (`/sessions`, `/resume`), debugging, and after-the-fact review. Window discovery journals a `context_window` event here too.
+4. **Session memory** — `.vela/sessions/*.jsonl` records what happened in a run: user requests, tool calls/results, per-model-call exact token `usage`, transport `error`s, `compact`ions, timings, and assistant responses. It is primarily for continuity (`/sessions`, `/resume`), debugging, and after-the-fact review. Window discovery journals a `context_window` event here too.
 
 The active LLM context is bounded one way: before every request the outgoing payload is measured against the context budget (the model's context window — probed or learned, see `docs/ARCHITECTURE.md` — minus reply headroom) and the conversation is reduced until it fits — summarizing older turns, and dropping the oldest only if summarizing fails. `/compact [focus]` runs the same summarization on demand. See `docs/ARCHITECTURE.md`.
 
@@ -38,8 +38,8 @@ Scoring is deterministic, dependency-free lexical relevance:
 Every injection bumps `hits`/`last_seen` on the chosen records and journals a
 `memory_injected` event (ids + size) to the session trace.
 
-Knobs: `CODER_MEMORY_INJECT` (default on), `CODER_MEMORY_TOPK` (4),
-`CODER_MEMORY_MAX_CHARS` (1500), `CODER_MEMORY_MIN_SCORE` (0.5).
+Knobs: `VELA_MEMORY_INJECT` (default on), `VELA_MEMORY_TOPK` (4),
+`VELA_MEMORY_MAX_CHARS` (1500), `VELA_MEMORY_MIN_SCORE` (0.5).
 
 ## Distillation at compact time
 
@@ -50,7 +50,7 @@ optional `memories` field in its JSON reply. Proposals are validated defensively
 project memory, and journaled as a `memory_distilled` event; the compact result
 reports how many were saved (`memories_saved`). Distillation failures never break
 compaction, and it only ever runs after the summary itself succeeded.
-`CODER_MEMORY_DISTILL=0` disables.
+`VELA_MEMORY_DISTILL=0` disables.
 
 ## Why lexical, not semantic
 
@@ -73,7 +73,7 @@ Because durable knowledge lives in project memory (and is injected per turn),
 resume only carries task state, keeping digests small.
 
 Ref grammar: `last`/none = newest; `#N` or a 1–2 digit number = Nth newest;
-anything else = session-id prefix match. Budget via `CODER_RESUME_MAX_CHARS`
+anything else = session-id prefix match. Budget via `VELA_RESUME_MAX_CHARS`
 (6000). If a digest would overflow it, oldest requests are dropped first — the
 header and newest state always survive.
 
@@ -81,12 +81,12 @@ header and newest state always survive.
 
 Memory is enforced-bounded so it can't silently bloat:
 
-- **Cap** — `CODER_MEMORY_MAX_RECORDS` (200): every write path (`remember`,
+- **Cap** — `VELA_MEMORY_MAX_RECORDS` (200): every write path (`remember`,
   distillation) prunes back to the cap deterministically — lowest `hits`, then
   oldest `last_seen`, then insertion order, dropped first. Hot, recently used
   memories survive. Selection is by position, never by value: two records may
   legitimately carry identical text, and comparing whole records would drop both.
-- **TTL** — `CODER_MEMORY_TTL_DAYS` (0 = off): records untouched longer than
+- **TTL** — `VELA_MEMORY_TTL_DAYS` (0 = off): records untouched longer than
   this expire on the same prune passes.
 - **Consolidation** — `/memory consolidate [focus]` shows the model every record
   and asks it to group duplicates/paraphrases (2+ ids per group, canonical

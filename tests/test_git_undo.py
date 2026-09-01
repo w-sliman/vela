@@ -1,6 +1,6 @@
 from tests.conftest import make_config
-from coding_agent.git import Git
-from coding_agent.workspace import Workspace
+from vela.git import Git
+from vela.workspace import Workspace
 
 
 def test_clean_tree_reports_clean(tmp_path):
@@ -12,8 +12,8 @@ def test_clean_tree_reports_clean(tmp_path):
 
 
 def test_edit_tool_creates_checkpoint(tmp_path):
-    from coding_agent.tools import ToolContext, dispatch
-    from coding_agent.shell import Shell
+    from vela.tools import ToolContext, dispatch
+    from vela.shell import Shell
     c = make_config(tmp_path, api_key='k', base_url=None, model='m', api_mode='auto', price_input_per_million=0.0, price_output_per_million=0.0, request_retries=2, auto_compact=True, stream_chat=True, auto_checkpoint=True)
     ctx = ToolContext(c, Workspace(tmp_path), Shell(c), lambda *_: True,
                       Git(tmp_path), None, None, None)
@@ -77,7 +77,7 @@ def test_undo_last_checkpoint_root_commit_refuses(tmp_path):
 
 
 def test_list_files_hides_git_dir(tmp_path):
-    from coding_agent.tools import ToolContext
+    from vela.tools import ToolContext
     c = make_config(tmp_path, api_key='k', base_url=None, model='m', api_mode='auto')
     ctx = ToolContext(c, Workspace(tmp_path), None, lambda *_: True,
                       Git(tmp_path), None, None, None)
@@ -89,7 +89,7 @@ def test_list_files_hides_git_dir(tmp_path):
 # ── checkpoints hold the user's work, never the agent's own state ────────────
 
 def _trace(root, text='{"kind":"user"}\n'):
-    d = root / '.coder-agent' / 'sessions'
+    d = root / '.vela' / 'sessions'
     d.mkdir(parents=True, exist_ok=True)
     f = d / 'session.jsonl'
     f.write_text(text)
@@ -130,9 +130,9 @@ def test_agent_state_committed_by_an_older_version_is_untracked_once(tmp_path):
     git = Git(tmp_path)
     git.ensure_repo()
     trace = _trace(tmp_path)
-    git.run('add', '-f', '.coder-agent')          # simulate the old `add -A` behaviour
+    git.run('add', '-f', '.vela')          # simulate the old `add -A` behaviour
     git.run('commit', '-m', 'legacy checkpoint')
-    assert '.coder-agent/sessions/session.jsonl' in git.run('ls-files').stdout
+    assert '.vela/sessions/session.jsonl' in git.run('ls-files').stdout
 
     Git(tmp_path).ensure_repo()
 

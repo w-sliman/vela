@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 
 from tests.conftest import make_config
-from coding_agent.session import Session
-from coding_agent.shell import Shell
+from vela.session import Session
+from vela.shell import Shell
 
 
 def test_session_filename_is_utc(tmp_path):
@@ -38,10 +38,10 @@ def test_usage_events_report_the_window_in_force_not_the_configured_one(tmp_path
     real context pressure by about half whenever the two disagreed."""
     import json as _json
     from tests.test_compact import FakeProvider
-    from coding_agent.budget import ContextBudget
-    from coding_agent.events import EventBus
-    from coding_agent.llm import CodingAgent
-    from coding_agent.session import Session
+    from vela.budget import ContextBudget
+    from vela.events import EventBus
+    from vela.llm import CodingAgent
+    from vela.session import Session
     from tests.conftest import make_config
 
     seen = []

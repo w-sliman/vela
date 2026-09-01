@@ -40,7 +40,7 @@ OPENAI_MODEL=...
 
 Never commit `.env`.
 
-You do not normally need to set `CODER_CONTEXT_WINDOW`: the agent probes local
+You do not normally need to set `VELA_CONTEXT_WINDOW`: the agent probes local
 servers that report their window and otherwise learns the real limit from the first
 rejection, caching it per endpoint and model. Set it only to skip the probe — a
 server rejection still overrides it.
@@ -54,13 +54,13 @@ above are required.
 ## Run
 
 ```bash
-python -m coding_agent --workspace ./workspace
+python -m vela --workspace ./workspace
 ```
 
 To use an existing project:
 
 ```bash
-python -m coding_agent --workspace /absolute/path/to/project
+python -m vela --workspace /absolute/path/to/project
 ```
 
 ## Test

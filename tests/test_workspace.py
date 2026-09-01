@@ -1,5 +1,5 @@
 from pathlib import Path
-from coding_agent.workspace import Workspace
+from vela.workspace import Workspace
 
 
 def test_write_and_read(tmp_path: Path):
@@ -16,7 +16,7 @@ def test_nested_write(tmp_path: Path):
 
 def test_stale_hash_on_deleted_file(tmp_path: Path):
     import pytest
-    from coding_agent.workspace import ConcurrentEditError
+    from vela.workspace import ConcurrentEditError
     ws = Workspace(tmp_path)
     ws.write_file("f.txt", "x\n")
     (tmp_path / "f.txt").unlink()

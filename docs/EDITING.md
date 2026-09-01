@@ -9,11 +9,11 @@ Editing follows **read -> fingerprint -> edit -> verify -> recover**.
 - Unified patches validate context before changing the file; malformed hunk headers return the expected `@@` format and advice to switch to `replace_text`.
 - Tool arguments are validated against each tool's schema (missing arguments produce named errors), and parsed defensively for common transport-level JSON failures.
 - Write preconditions are validated before the optional edit-approval prompt
-  (`CODER_APPROVAL_EDITS=1`), so a stale hash is reported without first asking you to
+  (`VELA_APPROVAL_EDITS=1`), so a stale hash is reported without first asking you to
   approve a diff that was never going to apply.
 - Every successful edit auto-commits a git checkpoint (commit messages start with `auto: `); `/undo` reverts the last one, but never touches user commits.
 - Large HTML/CSS/JS edits are deliberately bounded; use patches or several smaller writes.
-- Reads are bounded too. A file over `CODER_MAX_FILE_CHARS` is returned truncated and
+- Reads are bounded too. A file over `VELA_MAX_FILE_CHARS` is returned truncated and
   flagged, and writing that truncated view back is refused outright — the full-file
   hash would otherwise match while the content silently lost its tail.
 

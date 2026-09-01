@@ -56,7 +56,7 @@ style disagreement.
    replaced.
 9. **Observation outranks configuration — but only real observation.** A limit the
    server states about *itself*, by rejecting an oversized request, beats
-   `CODER_CONTEXT_WINDOW`. A probe does not: it is cached with its provenance and
+   `VELA_CONTEXT_WINDOW`. A probe does not: it is cached with its provenance and
    yields to an explicit setting, because a probe silently promoted to ground truth
    voids the operator's own configuration from the second session onwards. Never
    infer a window that was not reported — a wrong one silently disables reduction,
@@ -73,7 +73,7 @@ style disagreement.
    `expected_hash`; the guard is not optional for the model, because a model that
    simply omits it is how concurrent work gets destroyed. Silent partial success is
    the worst possible outcome here.
-12. **Checkpoints contain the user's work and nothing else.** `.coder-agent/` is
+12. **Checkpoints contain the user's work and nothing else.** `.vela/` is
     excluded from every snapshot. `/undo` is `git reset --hard`, so anything else
     swept in gets rewritten when an edit is undone — which silently truncated the
     session traces `/resume` reads back, including those of the session doing the
@@ -105,7 +105,7 @@ digest and not a replay — say so in the docstring, in one or two lines.
 ## Layout
 
 ```text
-coding_agent/
+vela/
   cli.py         # Rich REPL, slash commands, approval prompts
   llm.py         # controller loop, compaction, retries, verify gate, pause
   conversation.py# canonical, provider-neutral conversation items
@@ -139,7 +139,7 @@ tests/   docs/   smoke/   scripts/   workspace/
 ```bash
 pytest -q              # unit suite; no API key, no network
 ./scripts/check.sh     # pytest + compileall + ruff/mypy when installed
-python -m coding_agent --workspace ./workspace
+python -m vela --workspace ./workspace
 ```
 
 ## Safety

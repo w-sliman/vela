@@ -7,7 +7,7 @@ that touch a file containing blank lines.
 """
 import pytest
 
-from coding_agent.editor import unified_apply
+from vela.editor import unified_apply
 
 ORIGINAL = "def a():\n    pass\n\ndef b():\n    pass\n"
 

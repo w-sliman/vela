@@ -10,10 +10,10 @@ from types import SimpleNamespace as NS
 import pytest
 
 from tests.conftest import make_config
-from coding_agent.conversation import AssistantMsg, ToolCall, ToolResult, UserMsg
-from coding_agent.llm import CodingAgent
-from coding_agent.session import Session
-from coding_agent.transports import ChatTransport, ResponsesTransport, build
+from vela.conversation import AssistantMsg, ToolCall, ToolResult, UserMsg
+from vela.llm import CodingAgent
+from vela.session import Session
+from vela.transports import ChatTransport, ResponsesTransport, build
 
 HISTORY = [
     UserMsg(text='fix the parser'),

@@ -1,6 +1,6 @@
 """A partially-read file must never be writable back as a whole-file rewrite.
 
-read_file bounds content at CODER_MAX_FILE_CHARS but hashes the *whole* file, so
+read_file bounds content at VELA_MAX_FILE_CHARS but hashes the *whole* file, so
 the stale-hash guard cannot catch a truncated round-trip: the hash matches while
 the content is short. The write path fails closed on the truncation marker.
 """
@@ -9,13 +9,13 @@ import json
 import pytest
 
 from tests.conftest import make_config
-from coding_agent.browser import Browser
-from coding_agent.git import Git
-from coding_agent.github import GitHub
-from coding_agent.sandbox import DockerSandbox
-from coding_agent.shell import Shell
-from coding_agent.tools import ToolContext
-from coding_agent.workspace import TRUNCATION_MARKER, TruncatedContentError, Workspace
+from vela.browser import Browser
+from vela.git import Git
+from vela.github import GitHub
+from vela.sandbox import DockerSandbox
+from vela.shell import Shell
+from vela.tools import ToolContext
+from vela.workspace import TRUNCATION_MARKER, TruncatedContentError, Workspace
 
 LIMIT = 100
 
@@ -57,7 +57,7 @@ def test_writing_truncated_content_back_is_refused(tmp_path):
 
 
 def test_read_file_tool_surfaces_truncation(tmp_path, tool_ctx):
-    from coding_agent.tools import dispatch
+    from vela.tools import dispatch
 
     (tmp_path / "big.py").write_text("y" * 500)
     payload = json.loads(dispatch(tool_ctx, "read_file", {"path": "big.py"}))
@@ -68,7 +68,7 @@ def test_read_file_tool_surfaces_truncation(tmp_path, tool_ctx):
 
 
 def test_write_file_tool_reports_the_refusal(tmp_path, tool_ctx):
-    from coding_agent.tools import dispatch
+    from vela.tools import dispatch
 
     (tmp_path / "big.py").write_text("y" * 500)
     read = json.loads(dispatch(tool_ctx, "read_file", {"path": "big.py"}))

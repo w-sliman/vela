@@ -17,5 +17,5 @@ jobs:
       - run: pip install -r requirements.txt pytest ruff mypy
       - run: pytest -q
       - run: python smoke/runner.py
-      - run: ruff check --select F,E9 coding_agent smoke
-      - run: mypy coding_agent
+      - run: ruff check --select F,E9 vela smoke
+      - run: mypy vela

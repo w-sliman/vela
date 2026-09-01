@@ -1,11 +1,11 @@
 from tests.conftest import make_config
-from coding_agent.shell import Shell
-from coding_agent.workspace import Workspace
-from coding_agent.git import Git
-from coding_agent.browser import Browser
-from coding_agent.github import GitHub
-from coding_agent.sandbox import DockerSandbox
-from coding_agent.tools import ToolContext,dispatch
+from vela.shell import Shell
+from vela.workspace import Workspace
+from vela.git import Git
+from vela.browser import Browser
+from vela.github import GitHub
+from vela.sandbox import DockerSandbox
+from vela.tools import ToolContext,dispatch
 
 def context(tmp_path):
     cfg=make_config(tmp_path, api_key=None, base_url=None, model=None, api_mode='auto')

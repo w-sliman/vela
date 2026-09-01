@@ -1,4 +1,4 @@
-from coding_agent.json_repair import parse_tool_arguments
+from vela.json_repair import parse_tool_arguments
 
 def test_literal_newline_in_json_string():
     value,error,repaired=parse_tool_arguments('{"content":"line one\nline two"}')

@@ -45,7 +45,7 @@ Review this repository for security and correctness issues. Do not modify files.
 
 You rarely need `/compact`: before every request the agent measures the payload it is
 about to send and compacts automatically if it would not fit the context budget. Set
-`CODER_CONTEXT_WINDOW` to match your model — the budget cannot bind without it.
+`VELA_CONTEXT_WINDOW` to match your model — the budget cannot bind without it.
 
 There is no turn limit. A task that needs two hundred round-trips gets them; Ctrl+C
 pauses whenever you want to step in.

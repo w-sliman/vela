@@ -1,7 +1,7 @@
 import json
 
-from coding_agent.search import search_symbols
-from coding_agent.tools import ToolContext, dispatch
+from vela.search import search_symbols
+from vela.tools import ToolContext, dispatch
 
 
 def build(tmp_path):
@@ -80,10 +80,10 @@ def test_non_python_files_ignored(tmp_path):
 
 def test_dispatch_returns_structured_results(tmp_path):
     build(tmp_path)
-    from coding_agent.config import Config as C
-    from coding_agent.shell import Shell
-    from coding_agent.workspace import Workspace
-    from coding_agent.git import Git
+    from vela.config import Config as C
+    from vela.shell import Shell
+    from vela.workspace import Workspace
+    from vela.git import Git
     cfg = C('k', None, 'm', 'auto', tmp_path, 'prompt', 5000, 30000, 10, 10,
             20, 100, 10000, False, False, False, True, False)
     ctx = ToolContext(cfg, Workspace(tmp_path), Shell(cfg), lambda *_: True,

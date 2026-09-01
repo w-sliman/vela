@@ -19,15 +19,15 @@ isolation were wrong in practice. Commit messages carry the detail.
   reduction after a rejection walks it too instead of dropping outright.
 - The elision stub told the model to re-run the dropped call, which livelocked: the
   fresh result was the same size and was elided again. It now names cheaper reads.
-- A cached probe was read back as a rejection, so `CODER_CONTEXT_WINDOW` was silently
+- A cached probe was read back as a rejection, so `VELA_CONTEXT_WINDOW` was silently
   void from the second session on. The cache records provenance; only a rejection
   outranks configuration.
 - Rejection parsing missed llama.cpp's wording, so the highest-authority source never
   fired. It now reads the structured limit the server sends before trying prose.
 - The summarizer chose how much history to keep and picked the most aggressive value,
-  which left too few turns for compaction to run again. Now `CODER_COMPACT_KEEP_TURNS`
+  which left too few turns for compaction to run again. Now `VELA_COMPACT_KEEP_TURNS`
   (default 3), owned by the operator.
-- Checkpoints swept in `.coder-agent/`, so `/undo` rewound session traces along with
+- Checkpoints swept in `.vela/`, so `/undo` rewound session traces along with
   the code and corrupted the digests `/resume` reads back.
 - Edits were applied but never verified, corrupting three files across three sessions.
   Edits that would newly break a parseable file are refused, schema length limits are
@@ -39,7 +39,7 @@ isolation were wrong in practice. Commit messages carry the detail.
 - Deterministic 4xx rejections are no longer retried before the transport fallback.
 - The verify gate is on by default. On one A/B task the model edited a file and
   declared itself done having run nothing; with the gate on it ran the tests.
-  `CODER_VERIFY_GATE=0` restores the old behaviour.
+  `VELA_VERIFY_GATE=0` restores the old behaviour.
 
 ### Sub-agent retries and outbound URL containment
 - **`delegate_role` was the one model call without the retry policy.** It called the
@@ -60,21 +60,21 @@ isolation were wrong in practice. Commit messages carry the detail.
 - **`github_get` could be re-targeted by its path.** `'https://api.github.com'+path`
   with `//evil.com/x` moves the host — and that request attaches `GITHUB_TOKEN`, so it
   leaks a credential. Paths are now validated before they are appended.
-- `CODER_ALLOW_PRIVATE_URLS=1` lifts the restriction for deliberate local use.
+- `VELA_ALLOW_PRIVATE_URLS=1` lifts the restriction for deliberate local use.
 - 44 new tests, again weighted toward the negative cases: DNS rebinding, IPv4-mapped
   loopback, redirect-onto-metadata, token-leaking API paths, and no request being made
   at all for a blocked URL.
 
 ### The context window is learned, not assumed
-- **`CODER_CONTEXT_WINDOW=128000` was an unsafe default.** Point the agent at a 32k
+- **`VELA_CONTEXT_WINDOW=128000` was an unsafe default.** Point the agent at a 32k
   model and the budget believed it had 128k, so it never reduced and the request was
   rejected anyway. The window is now worked out rather than assumed.
 - **Learned from a rejection (primary).** A server refusing an oversized request
   states its real limit; that is parsed, adopted, cached per (endpoint, model) in
-  `.coder-agent/windows.json`, and the request retried. Provider-agnostic — it works
+  `.vela/windows.json`, and the request retried. Provider-agnostic — it works
   for OpenAI, DeepSeek, Kimi and GLM, none of which expose the window any other way —
   and it costs one failed request once per model rather than once per session.
-  A learned limit overrides even an explicit `CODER_CONTEXT_WINDOW`: observation
+  A learned limit overrides even an explicit `VELA_CONTEXT_WINDOW`: observation
   outranks configuration, because the server is not wrong about its own ceiling.
 - **Probed at startup (secondary)** for the local servers that do report it, unless
   the window was set by hand: vLLM `max_model_len` on `/v1/models`, llama.cpp
@@ -92,7 +92,7 @@ isolation were wrong in practice. Commit messages carry the detail.
   a transport problem, and every transport would reject it identically.
 - The resolved window and its source are journaled as `context_window`, shown at
   startup when not simply configured, and reported by `/model`.
-- No `CODER_BACKEND`-style knob: the probe that answers already identifies the
+- No `VELA_BACKEND`-style knob: the probe that answers already identifies the
   backend, so declaring it in advance would add a way to be wrong without adding
   information.
 - 33 new tests, weighted toward the negative cases — an unrelated 401 must not shrink
@@ -119,15 +119,15 @@ isolation were wrong in practice. Commit messages carry the detail.
   replaced. A reduction that reports success while freeing nothing now falls through
   to the blunter method — without that check the fit loop spins forever, which the
   tests caught.
-- **The threshold is derived, not tuned.** `CODER_AUTO_COMPACT_PCT` is gone; the limit
-  is the window minus reply headroom (`CODER_REPLY_RESERVE_TOKENS`, default window/8,
+- **The threshold is derived, not tuned.** `VELA_AUTO_COMPACT_PCT` is gone; the limit
+  is the window minus reply headroom (`VELA_REPLY_RESERVE_TOKENS`, default window/8,
   capped at half the window so it can never collapse the limit to zero).
 - **`max_turns` removed.** Long tasks are bounded by the context budget and by Ctrl+C,
   which pauses cooperatively. The old cap of 30 raised a `RuntimeError` that discarded
   a request's worth of completed work for no safety the budget does not provide.
-- Removed `context.py` and the now-dead knobs `CODER_MAX_TURNS`,
-  `CODER_MAX_HISTORY_ITEMS`, `CODER_MAX_HISTORY_CHARS`, `CODER_MAX_CONTEXT_CHARS`,
-  `CODER_AUTO_COMPACT_PCT`.
+- Removed `context.py` and the now-dead knobs `VELA_MAX_TURNS`,
+  `VELA_MAX_HISTORY_ITEMS`, `VELA_MAX_HISTORY_CHARS`, `VELA_MAX_CONTEXT_CHARS`,
+  `VELA_AUTO_COMPACT_PCT`.
 - Tests: new `tests/conftest.py` provides `make_config`, replacing 25 positional
   `Config(...)` constructions whose field order made every schema change a 25-file
   edit. `test_auto_compact.py` became `test_budget.py`.
@@ -167,11 +167,11 @@ isolation were wrong in practice. Commit messages carry the detail.
   REPL prints each line through Rich — the remainder was dropped and the model reasoned
   from a truncated view of its own test output. The join now allows a real grace period,
   and the reader tolerates the pipe closing underneath it.
-- **Edit approval asked before validating.** With `CODER_APPROVAL_EDITS=1`, `write_file`
+- **Edit approval asked before validating.** With `VELA_APPROVAL_EDITS=1`, `write_file`
   prompted for a diff and only then checked size, truncation marker, and `expected_hash`
   — so a stale hash cost the user a decision on an edit that could never apply.
   Preconditions moved into `Workspace.preflight_write()` and run first.
-- **Model-supplied `run_command` timeouts are clamped** to 1..`CODER_COMMAND_TIMEOUT`.
+- **Model-supplied `run_command` timeouts are clamped** to 1..`VELA_COMMAND_TIMEOUT`.
   They were previously passed through unbounded, so one bad value could hang the REPL.
 - **`memory.prune` selected records by value.** `r not in stale` compared whole records:
   O(n²), and two records legitimately holding identical text were both dropped when only
@@ -195,7 +195,7 @@ isolation were wrong in practice. Commit messages carry the detail.
   version. CI tested 3.12 only, so it never surfaced. Fixed, and CI now runs a
   3.11 + 3.12 matrix.
 - **Truncated reads can no longer silently destroy files.** `read_file` bounds content at
-  `CODER_MAX_FILE_CHARS` but hashes the *whole* file, so echoing a truncated view back
+  `VELA_MAX_FILE_CHARS` but hashes the *whole* file, so echoing a truncated view back
   through `write_file` passed the stale-hash guard and dropped the tail. `read_file` now
   returns a `truncated` flag plus a warning, and `write_file` refuses any content carrying
   the truncation marker.
@@ -215,7 +215,7 @@ isolation were wrong in practice. Commit messages carry the detail.
   "read-only" (it includes `python`/`pytest`, which execute workspace code); `README.md`
   layout and LLM sections rewritten (dual transport, 26 modules, not 9); `EDITING.md` and
   `ARCHITECTURE.md` now state that the transport fallback discards conversation history.
-- `.env.example` documents `CODER_APPROVAL_EDITS` and `GITHUB_TOKEN`; the per-turn status
+- `.env.example` documents `VELA_APPROVAL_EDITS` and `GITHUB_TOKEN`; the per-turn status
   line no longer prints the context window twice in two formats.
 - 13 new tests (truncation guard, patch blank lines, widened policy + no-false-positive
   regression).
@@ -241,23 +241,23 @@ isolation were wrong in practice. Commit messages carry the detail.
 - Deterministic lexical scorer: field-weighted token overlap (text 1x / tags 2x / path tokens 3x + active-path bonus), IDF weighting, recency decay, usage boost.
 - Once per user request the best records are attached to the model payload as an advisory `[project memory]` block — never persisted into history, so trimming/pair integrity and the approval/policy layer are untouched; memory failures are journaled and skipped.
 - Injections bump record `hits`/`last_seen` (self-tuning ranking) and journal a `memory_injected` event; `/memory` and `recall_memory` now render readable records.
-- Compact-time distillation: the `/compact` summarizer may propose durable facts/decisions/preferences in its JSON reply (`memories` field); proposals are validated, deduped via `add()`, persisted to project memory, journaled as `memory_distilled`, and counted in the compact result (`memories_saved`). Failures never break compaction; `CODER_MEMORY_DISTILL=0` disables.
+- Compact-time distillation: the `/compact` summarizer may propose durable facts/decisions/preferences in its JSON reply (`memories` field); proposals are validated, deduped via `add()`, persisted to project memory, journaled as `memory_distilled`, and counted in the compact result (`memories_saved`). Failures never break compaction; `VELA_MEMORY_DISTILL=0` disables.
 - `remember` accepts optional `tags`/`paths`; new `forget_memory` tool deletes by id prefix; exact-duplicate `remember` calls refresh instead of duplicating.
-- Knobs: `CODER_MEMORY_INJECT`, `CODER_MEMORY_TOPK`, `CODER_MEMORY_MAX_CHARS`, `CODER_MEMORY_MIN_SCORE`, `CODER_MEMORY_DISTILL` (all documented in `.env.example`). 26 new unit tests.
+- Knobs: `VELA_MEMORY_INJECT`, `VELA_MEMORY_TOPK`, `VELA_MEMORY_MAX_CHARS`, `VELA_MEMORY_MIN_SCORE`, `VELA_MEMORY_DISTILL` (all documented in `.env.example`). 26 new unit tests.
 
 ### Memory curation & visibility
 - `/memory consolidate [focus]`: the model proposes duplicate/paraphrase groups; deterministic merge keeps the primary id (text/kind replaced, tags/paths unioned, hits summed, dates spanned), drops members, journals `memory_consolidated`. Prose replies are safe no-ops; transport failures propagate like `/compact`.
-- Bounded growth: `CODER_MEMORY_MAX_RECORDS` (200) prunes coldest-first on every write; optional `CODER_MEMORY_TTL_DAYS` expiry (off by default).
+- Bounded growth: `VELA_MEMORY_MAX_RECORDS` (200) prunes coldest-first on every write; optional `VELA_MEMORY_TTL_DAYS` expiry (off by default).
 - The REPL now shows which memory ids were injected after each turn (`memory: r2, r7`).
 
 ### Working todo list
 - New `write_todos` tool: full-list replacement semantics (no stale ids possible), items `{text, status}` capped at 12×120 chars, statuses `pending/in_progress/done`.
 - The queue is rendered live in the REPL on every update, inspectable via `/todos`, summarized as `todos: N/M done` next to turn stats, and re-injected into every model request so it survives pair-aware trimming and auto-compact.
 - Deterministic Python validates lists, diffs old-vs-new (completed/reopened/added/removed/in_progress), journals `todos_updated` events to the session trace, and feeds open items into `/resume` digests.
-- System prompt encodes the behavioral contract: plan before multi-step work, one in_progress at a time, done-with-evidence immediately, revise-first when instructions change. Knob: `CODER_TODOS=1`.
+- System prompt encodes the behavioral contract: plan before multi-step work, one in_progress at a time, done-with-evidence immediately, revise-first when instructions change. Knob: `VELA_TODOS=1`.
 
 ### Verification gate (experimental)
-- `CODER_VERIFY_GATE=1` (off by default): edits set a dirty flag; only recognized checks (`run_tests`, or `run_command` invoking pytest/mypy/ruff/unittest/etc.) clear it when they pass. If the model finishes a request with open todos or unverified edits, deterministic code appends one corrective nudge and lets the loop continue — at most once per request, journaled as `verify_gate`.
+- `VELA_VERIFY_GATE=1` (off by default): edits set a dirty flag; only recognized checks (`run_tests`, or `run_command` invoking pytest/mypy/ruff/unittest/etc.) clear it when they pass. If the model finishes a request with open todos or unverified edits, deterministic code appends one corrective nudge and lets the loop continue — at most once per request, journaled as `verify_gate`.
 
 ### Cooperative pause + /continue
 - Ctrl+C during a run no longer discards the turn: KeyboardInterrupt is converted at a safe boundary, `_repair_partial_turn()` closes any dangling tool-call pair with `[interrupted by user]` outputs (chat and responses transports both handled), the pause is journaled as `paused`, and the REPL prints how to resume. `/continue` re-enters the loop with a synthetic nudge; typing anything else continues the same context instead.
@@ -266,24 +266,24 @@ isolation were wrong in practice. Commit messages carry the detail.
 - `/sessions [n]`: newest-first index of recorded session traces (id, UTC start, turns, first request), excluding the active session.
 - `/resume [ref]`: continue any past session as fresh context. The trace is rebuilt mechanically into a bounded digest (requests, deduplicated touched files, compaction/error counts, last assistant answer) — never raw replay, so history/pair integrity and stale-hash safety hold by construction. Lineage journaled as `resumed_from`.
 - Ref grammar: `last`/none = newest; `#N`/1–2 digit = Nth newest; otherwise session-id prefix (unique match required).
-- Knob: `CODER_RESUME_MAX_CHARS` (6000); oldest requests drop first when the budget binds. 10 new unit/smoke tests.
+- Knob: `VELA_RESUME_MAX_CHARS` (6000); oldest requests drop first when the budget binds. 10 new unit/smoke tests.
 
 ## 1.1.0 — 2026-08-26
 
 ### Streaming & observability
-- Live token streaming for the Chat Completions transport (`CODER_STREAM`, default on); tool-call fragments are reassembled transparently.
+- Live token streaming for the Chat Completions transport (`VELA_STREAM`, default on); tool-call fragments are reassembled transparently.
 - Per-turn token/context status line (in / out / total / context window / %) rendered always; exact `usage` events journaled per model call; `/usage` command with session totals, estimated cost, and average latency.
 - Endpoints that return no usage object are counted and flagged with advice — usage is never estimated.
 
 ### Context management
 - Pair-aware history trimming: assistant tool-call + tool-output pairs (and Responses-API call/output pairs) are never split.
 - `/compact [focus]`: LLM summarizes older turns into one context message; the summarizer chooses how many recent turns stay verbatim (clamped 1–5); focus text steers the summary and is persisted in its header. Transport failure leaves history untouched.
-- Auto-compact once per request when context crosses `CODER_AUTO_COMPACT_PCT` (default 80%) of `CODER_CONTEXT_WINDOW` (`CODER_AUTO_COMPACT=0` disables).
+- Auto-compact once per request when context crosses `VELA_AUTO_COMPACT_PCT` (default 80%) of `VELA_CONTEXT_WINDOW` (`VELA_AUTO_COMPACT=0` disables).
 
 ### Safety & robustness
 - Command policy: compound/redirecting commands, inline scripts (`python -c`), `pip install`, destructive `find` now require approval; simple read-only commands remain auto-allowed.
 - Subprocess environments scrubbed of secret-shaped variables.
-- `CODER_APPROVAL_MODE` (`prompt`/`auto`/`deny`) is actually enforced now.
+- `VELA_APPROVAL_MODE` (`prompt`/`auto`/`deny`) is actually enforced now.
 - Model-request retries with exponential backoff before Responses→Chat fallback.
 - Session traces: UTC filenames matching log timestamps; `error` events journaled.
 
@@ -292,7 +292,7 @@ isolation were wrong in practice. Commit messages carry the detail.
 - Failed anchors list closest matching lines from the file; fuzzy replacement requires `expected_hash`; new line-range replacement mode; hunk-header errors teach the correct format.
 
 ### New capabilities
-- `/undo` with automatic per-edit git checkpoints (`CODER_AUTO_CHECKPOINT`, default on); workspace git bootstrapped lazily with fallback identity.
+- `/undo` with automatic per-edit git checkpoints (`VELA_AUTO_CHECKPOINT`, default on); workspace git bootstrapped lazily with fallback identity.
 - AST-based `search_symbols`: qualified names, kinds, line spans, signatures; regex fallback for unparsable files.
 
 ### Hygiene

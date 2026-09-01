@@ -1,6 +1,6 @@
 from pathlib import Path
 import ast,os,re
-IGNORED={'.git','.venv','venv','__pycache__','.pytest_cache','node_modules','.coder-agent'}
+IGNORED={'.git','.venv','venv','__pycache__','.pytest_cache','node_modules','.vela'}
 MAX_SYMBOLS=500
 def _files(root):
  for cur,dirs,files in os.walk(root):

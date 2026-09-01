@@ -1,7 +1,7 @@
 from __future__ import annotations
 import hashlib, difflib
 from .policy import ensure_within
-TRUNCATION_MARKER='\n...[truncated: file exceeds CODER_MAX_FILE_CHARS]...'
+TRUNCATION_MARKER='\n...[truncated: file exceeds VELA_MAX_FILE_CHARS]...'
 MAX_LISTING_ENTRIES=1000
 class Workspace:
     def __init__(self,root,max_file_chars=30000): self.root=root.resolve(); self.max_file_chars=max_file_chars; self.root.mkdir(parents=True,exist_ok=True)

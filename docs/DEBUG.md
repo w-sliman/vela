@@ -3,7 +3,7 @@
 Enable it with:
 
 ```bash
-CODER_DEBUG=1 python -m coding_agent --workspace ./my-project
+VELA_DEBUG=1 python -m vela --workspace ./my-project
 ```
 
 You will see operational steps such as:

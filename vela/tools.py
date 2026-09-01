@@ -56,7 +56,7 @@ def tool_schemas():
  fn('make_directory','Create a directory.',{'path':{'type':'string'}},['path']),
  fn('search_text','Regex search across workspace text.',{'query':{'type':'string'},'max_results':{'type':'integer'}},['query']),
  fn('search_symbols','Find Python functions/classes via AST: qualified names (Class.method), kind, line span, signature.',{'query':{'type':'string'}},[]),
- fn('run_command','Run a shell command subject to policy/approval.',{'command':{'type':'string'},'timeout':{'type':'integer','description':'seconds; clamped to the configured ceiling (CODER_COMMAND_TIMEOUT)'}},['command']),
+ fn('run_command','Run a shell command subject to policy/approval.',{'command':{'type':'string'},'timeout':{'type':'integer','description':'seconds; clamped to the configured ceiling (VELA_COMMAND_TIMEOUT)'}},['command']),
  fn('run_tests','Select/run tests relevant to changed paths.',{'paths':{'type':'array','items':{'type':'string'}},'command':{'type':'string'}},[]),
  fn('git_status','Show Git status.',{},[]),fn('git_diff','Show Git diff.',{'staged':{'type':'boolean'}},[]),
  fn('git_checkpoint','Create a Git checkpoint; always requires approval.',{'message':{'type':'string'}},['message']),
@@ -98,7 +98,7 @@ def _enforce_limits(name,a):
     '— an oversized replacement is where content gets silently dropped.')
 
 def _approve_edit(ctx,label,old,new,path):
- """Optional consent gate for file edits (CODER_APPROVAL_EDITS=1): show the
+ """Optional consent gate for file edits (VELA_APPROVAL_EDITS=1): show the
  computed diff through the approval layer before anything is written."""
  if not getattr(ctx.config,'approval_edits',False):return True
  d=ctx.workspace.diff(old,new,path)

@@ -3,9 +3,9 @@ import json
 import pytest
 
 from tests.conftest import make_config
-from coding_agent.llm import CodingAgent, PauseInterrupt
-from coding_agent.conversation import INTERRUPTED, AssistantMsg, ToolCall, ToolResult, UserMsg
-from coding_agent.session import Session
+from vela.llm import CodingAgent, PauseInterrupt
+from vela.conversation import INTERRUPTED, AssistantMsg, ToolCall, ToolResult, UserMsg
+from vela.session import Session
 
 from tests.test_verify_gate import Scripted, tool_call
 

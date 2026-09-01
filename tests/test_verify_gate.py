@@ -2,10 +2,10 @@ import json
 from types import SimpleNamespace as NS
 
 
-from coding_agent.config import Config
+from vela.config import Config
 from tests.conftest import make_config
-from coding_agent.llm import VERIFY_GATE_MSG, CodingAgent
-from coding_agent.session import Session
+from vela.llm import VERIFY_GATE_MSG, CodingAgent
+from vela.session import Session
 
 from tests.test_todos import tool_ctx
 
@@ -84,7 +84,7 @@ def test_gate_intercepts_unverified_edits_without_todos(tmp_path):
     assert res_text(agent) == 'now actually checked'
 
 def res_text(agent):
-    from coding_agent.conversation import AssistantMsg
+    from vela.conversation import AssistantMsg
     return isinstance(agent.history[-1], AssistantMsg) and agent.history[-1].text
 
 
@@ -118,5 +118,5 @@ def test_verify_gate_is_on_by_default(monkeypatch, tmp_path):
 
 def test_verify_gate_can_be_switched_off(monkeypatch, tmp_path):
     monkeypatch.setenv('OPENAI_API_KEY', 'k'); monkeypatch.setenv('OPENAI_MODEL', 'm')
-    monkeypatch.setenv('CODER_VERIFY_GATE', '0')
+    monkeypatch.setenv('VELA_VERIFY_GATE', '0')
     assert Config.from_env(str(tmp_path)).verify_gate is False

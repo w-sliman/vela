@@ -3,10 +3,10 @@ import json
 import pytest
 
 from tests.conftest import make_config
-from coding_agent.editor import exact_replace, replace_lines, unified_apply
-from coding_agent.shell import Shell
-from coding_agent.tools import ToolContext, dispatch
-from coding_agent.workspace import Workspace
+from vela.editor import exact_replace, replace_lines, unified_apply
+from vela.shell import Shell
+from vela.tools import ToolContext, dispatch
+from vela.workspace import Workspace
 
 
 def context(tmp_path):
@@ -39,7 +39,7 @@ def test_not_found_without_hint_stays_clean():
 
 
 def test_fuzzy_error_reports_line_and_alternatives():
-    from coding_agent.editor import fuzzy_replace
+    from vela.editor import fuzzy_replace
     with pytest.raises(ValueError) as exc:
         fuzzy_replace(ORIGINAL, 'totally different text here', 'x')
     assert 'near line' in str(exc.value)

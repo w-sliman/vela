@@ -7,7 +7,7 @@ from pathlib import Path
 # swept in here gets rewritten when a checkpoint is undone, silently truncating the
 # very traces `/resume` reads back and destroying the audit trail of the session
 # doing the undoing.
-AGENT_STATE_DIR='.coder-agent'
+AGENT_STATE_DIR='.vela'
 class Git:
     def __init__(self,root):self.root=root;self._ready=None
     def run(self,*args):return subprocess.run(['git',*args],cwd=self.root,text=True,capture_output=True)

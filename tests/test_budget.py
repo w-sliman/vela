@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from coding_agent.budget import (
+from vela.budget import (
     DEFAULT_CHARS_PER_TOKEN,
     ELIDED_STATUS,
     ContextBudget,
@@ -18,11 +18,11 @@ from coding_agent.budget import (
     orphaned,
     payload_chars,
 )
-from coding_agent.config import Config
-from coding_agent.conversation import AssistantMsg, ToolCall, ToolResult, UserMsg
-from coding_agent.llm import CodingAgent
-from coding_agent.session import Session
-from coding_agent.transports import ChatTransport
+from vela.config import Config
+from vela.conversation import AssistantMsg, ToolCall, ToolResult, UserMsg
+from vela.llm import CodingAgent
+from vela.session import Session
+from vela.transports import ChatTransport
 from tests.conftest import make_config
 from tests.test_compact import FakeProvider, hist
 
@@ -296,9 +296,9 @@ def test_config_defaults_and_overrides(monkeypatch, tmp_path):
     monkeypatch.setenv('OPENAI_MODEL', 'm')
     c = Config.from_env(str(tmp_path))
     assert c.request_retries == 2 and c.auto_compact is True and c.reply_reserve_tokens == 0
-    monkeypatch.setenv('CODER_REQUEST_RETRIES', '5')
-    monkeypatch.setenv('CODER_AUTO_COMPACT', '0')
-    monkeypatch.setenv('CODER_REPLY_RESERVE_TOKENS', '4096')
+    monkeypatch.setenv('VELA_REQUEST_RETRIES', '5')
+    monkeypatch.setenv('VELA_AUTO_COMPACT', '0')
+    monkeypatch.setenv('VELA_REPLY_RESERVE_TOKENS', '4096')
     c2 = Config.from_env(str(tmp_path))
     assert (c2.request_retries, c2.auto_compact, c2.reply_reserve_tokens) == (5, False, 4096)
 

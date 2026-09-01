@@ -7,7 +7,7 @@ so history/pair integrity holds by construction regardless of which transport
 from __future__ import annotations
 import json
 
-def _sessions_dir(workspace):return workspace/'.coder-agent'/'sessions'
+def _sessions_dir(workspace):return workspace/'.vela'/'sessions'
 def _trunc(s,n):s=str(s).strip();return s[:n]+'…' if len(s)>n else s
 
 def list_sessions(workspace,exclude=None,limit=20):

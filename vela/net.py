@@ -12,7 +12,7 @@ because a public host may redirect to a private one, and resolves the hostname b
 judging it, because `evil.com` can simply have an A record pointing at 127.0.0.1.
 
 This is containment for the network tools, not a general security boundary: approved
-shell commands still run as the local user. `CODER_ALLOW_PRIVATE_URLS=1` lifts it for
+shell commands still run as the local user. `VELA_ALLOW_PRIVATE_URLS=1` lifts it for
 people who genuinely want to point the agent at something on localhost.
 """
 from __future__ import annotations
@@ -78,7 +78,7 @@ def check_url(url,allow_private=False):
         if reason:
             raise BlockedURLError(
                 f'refusing to fetch {host} ({ip}): {reason}. '
-                'Set CODER_ALLOW_PRIVATE_URLS=1 if this is deliberate.')
+                'Set VELA_ALLOW_PRIVATE_URLS=1 if this is deliberate.')
     return url
 
 

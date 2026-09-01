@@ -15,4 +15,4 @@ def test_greet():
     assert greet("Ada") == "Hello, Ada!"
 PY
 echo "Demo project created in ./workspace"
-echo "Run: source .venv/bin/activate && python -m coding_agent --workspace ./workspace"
+echo "Run: source .venv/bin/activate && python -m vela --workspace ./workspace"

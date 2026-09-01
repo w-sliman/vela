@@ -2,12 +2,12 @@ import json
 from datetime import datetime, timedelta, timezone as tz
 from types import SimpleNamespace as NS
 
-from coding_agent.config import Config
+from vela.config import Config
 from tests.conftest import make_config
-from coding_agent.conversation import AssistantMsg, ToolCall, ToolResult
-from coding_agent.llm import CodingAgent, _recent_paths
-from coding_agent.memory import ProjectMemory, select_records, tokenize, render_record
-from coding_agent.session import Session
+from vela.conversation import AssistantMsg, ToolCall, ToolResult
+from vela.llm import CodingAgent, _recent_paths
+from vela.memory import ProjectMemory, select_records, tokenize, render_record
+from vela.session import Session
 
 from tests.test_tools import context, dispatch
 
@@ -47,8 +47,9 @@ class FakeProvider:
 # --- tokenizer ---
 
 def test_tokenize_keeps_paths_whole_and_split():
-    t = tokenize('Fix flaky retries in coding_agent/llm.py')
-    assert 'coding_agent/llm.py' in t and {'coding', 'agent', 'llm'} <= set(t)
+    t = tokenize('Fix flaky retries in vela/json_repair.py')
+    # the whole path survives, and it is also split on '/', '_' and '.'
+    assert 'vela/json_repair.py' in t and {'vela', 'json', 'repair'} <= set(t)
     assert 'in' not in t and 'fix' in t            # stopwords dropped, lowercased
 
 def test_tokenize_drops_short_and_stop_tokens():
@@ -58,7 +59,7 @@ def test_tokenize_drops_short_and_stop_tokens():
 # --- store: migration / add / forget / touch ---
 
 def test_legacy_buckets_migrate_to_records(tmp_path):
-    p = tmp_path / '.coder-agent' / 'memory.json'
+    p = tmp_path / '.vela' / 'memory.json'
     p.parent.mkdir(parents=True)
     p.write_text(json.dumps({'facts': [{'text': 'uses pytest', 'timestamp': '2026-01-01T00:00:00+00:00'}],
                              'preferences': ['dense code style']}))
@@ -98,11 +99,11 @@ def test_tag_and_active_path_boost_rank_results():
     now = datetime.now(tz.utc)
     plain = rec('r1', text='the workspace root is ./workspace')
     tagged = rec('r2', text='how we run the suite', tags=['testing'])
-    bypath = rec('r3', text='retry logic notes', paths=['coding_agent/llm.py'])
-    from coding_agent.memory import score_record, _idf
+    bypath = rec('r3', text='retry logic notes', paths=['vela/llm.py'])
+    from vela.memory import score_record, _idf
     records = [plain, tagged, bypath]
     idf = _idf(records)
-    qp = {'coding_agent/llm.py', 'coding', 'agent', 'llm', 'py'}
+    qp = {'vela/llm.py', 'vela', 'llm', 'py'}
     q = set(tokenize('testing retry logic'))
     scores = {r['id']: score_record(r, q, qp, idf, now) for r in records}
     assert scores['r1'] == 0.0                                # no overlap -> zero
@@ -113,7 +114,7 @@ def test_recency_decay_prefers_fresh_records():
     now = datetime.now(tz.utc)
     fresh = rec('r1', text='pytest markers', seen=now)
     stale = rec('r2', text='pytest markers', seen=now - timedelta(days=365))
-    from coding_agent.memory import score_record, _idf
+    from vela.memory import score_record, _idf
     records = [fresh, stale]; idf = _idf(records)
     q = set(tokenize('pytest markers'))
     assert score_record(fresh, q, set(), idf, now) > score_record(stale, q, set(), idf, now)
@@ -160,9 +161,9 @@ def test_memory_config_defaults(monkeypatch, tmp_path):
 
 def test_memory_config_env_overrides(monkeypatch, tmp_path):
     monkeypatch.setenv('OPENAI_API_KEY', 'k'); monkeypatch.setenv('OPENAI_MODEL', 'm')
-    monkeypatch.setenv('CODER_MEMORY_INJECT', '0'); monkeypatch.setenv('CODER_MEMORY_TOPK', '7')
-    monkeypatch.setenv('CODER_MEMORY_MAX_CHARS', '800'); monkeypatch.setenv('CODER_MEMORY_MIN_SCORE', '2.5')
-    monkeypatch.setenv('CODER_MEMORY_MAX_RECORDS', '25'); monkeypatch.setenv('CODER_MEMORY_TTL_DAYS', '30')
+    monkeypatch.setenv('VELA_MEMORY_INJECT', '0'); monkeypatch.setenv('VELA_MEMORY_TOPK', '7')
+    monkeypatch.setenv('VELA_MEMORY_MAX_CHARS', '800'); monkeypatch.setenv('VELA_MEMORY_MIN_SCORE', '2.5')
+    monkeypatch.setenv('VELA_MEMORY_MAX_RECORDS', '25'); monkeypatch.setenv('VELA_MEMORY_TTL_DAYS', '30')
     c = Config.from_env(str(tmp_path))
     assert (c.memory_inject, c.memory_top_k, c.memory_max_chars, c.memory_min_score) == (False, 7, 800, 2.5)
     assert (c.memory_max_records, c.memory_ttl_days) == (25, 30)
@@ -183,7 +184,7 @@ def test_prune_ttl_drops_stale_and_respects_off(tmp_path):
     m = ProjectMemory(tmp_path)
     ancient = datetime.now(tz.utc) - timedelta(days=400)
     m.add('fact', 'ancient note')
-    mf = tmp_path / '.coder-agent' / 'memory.json'
+    mf = tmp_path / '.vela' / 'memory.json'
     d = json.loads(mf.read_text())
     d['records'][0]['created'] = d['records'][0]['last_seen'] = ancient.isoformat()
     mf.write_text(json.dumps(d))
@@ -221,7 +222,7 @@ def test_consolidate_ignores_singletons_unknowns_and_supplies_union_defaults(tmp
     assert r['text'] == 'merged x' and sorted(r['tags']) == ['t1', 't2']   # union default
 
 def test_clean_groups_validation():
-    from coding_agent.llm import _clean_groups
+    from vela.llm import _clean_groups
     out = _clean_groups([
         {'ids': ['r1', 'r2'], 'text': 'ok merge'},
         {'ids': ['r1'], 'text': 'too few'},                    # singleton
@@ -247,13 +248,13 @@ def test_remember_and_forget_tools_roundtrip(tmp_path):
     assert removed['removed'] == 1 and ProjectMemory(tmp_path).records() == []
 
 def test_remember_tool_prunes_to_configured_cap(tmp_path):
-    from coding_agent.browser import Browser
-    from coding_agent.github import GitHub
-    from coding_agent.sandbox import DockerSandbox
-    from coding_agent.git import Git
-    from coding_agent.shell import Shell
-    from coding_agent.tools import ToolContext
-    from coding_agent.workspace import Workspace
+    from vela.browser import Browser
+    from vela.github import GitHub
+    from vela.sandbox import DockerSandbox
+    from vela.git import Git
+    from vela.shell import Shell
+    from vela.tools import ToolContext
+    from vela.workspace import Workspace
     cfg = make_config(tmp_path, api_key=None, base_url=None, model=None, api_mode='auto', memory_max_records=2)
     c = ToolContext(cfg, Workspace(tmp_path), Shell(cfg), lambda *_: True,
                     Git(tmp_path), Browser(), GitHub(), DockerSandbox(tmp_path))
@@ -285,7 +286,7 @@ def test_injection_records_event_and_bumps_hits(tmp_path):
     _seed(tmp_path)
     agent = make_agent(tmp_path, FakeProvider())
     agent.run('please fix the failing tests')
-    traces = list((tmp_path / '.coder-agent' / 'sessions').glob('*.jsonl'))
+    traces = list((tmp_path / '.vela' / 'sessions').glob('*.jsonl'))
     events = [json.loads(l) for l in traces[-1].read_text().splitlines()]
     kinds = [e['kind'] for e in events]
     assert 'memory_injected' in kinds
@@ -308,12 +309,12 @@ def test_injection_disabled_via_config(tmp_path):
 def test_recent_paths_harvested_from_history_tool_args():
     history = [
         AssistantMsg(tool_calls=[ToolCall(id='c1', name='read_file',
-                                          arguments='{"path": "coding_agent/llm.py"}')]),
+                                          arguments='{"path": "vela/llm.py"}')]),
         AssistantMsg(tool_calls=[ToolCall(id='c2', name='replace_text',
                                           arguments='{"path":"a/b.py","new":"x"}')]),
         ToolResult(call_id='c2', output='ok'),
     ]
-    assert _recent_paths(history) == ['coding_agent/llm.py', 'a/b.py']
+    assert _recent_paths(history) == ['vela/llm.py', 'a/b.py']
 
 
 def test_recent_paths_reads_the_paths_array_too():
@@ -325,7 +326,7 @@ def test_memory_failure_never_breaks_request(tmp_path, monkeypatch):
     _seed(tmp_path)
     p = FakeProvider()
     agent = make_agent(tmp_path, p)
-    monkeypatch.setattr('coding_agent.memory.ProjectMemory.records',
+    monkeypatch.setattr('vela.memory.ProjectMemory.records',
                         lambda self: (_ for _ in ()).throw(RuntimeError('disk gone')))
     agent.run('fix the failing tests')                     # must not raise
     assert len(p.calls) == 1
@@ -347,7 +348,7 @@ def test_compact_distills_valid_memories_and_drops_junk(tmp_path):
     assert len(agent.history) == 1 + kept * 3   # summary + kept turns x 3 items each
     recs = ProjectMemory(tmp_path).records()
     assert len(recs) == 1 and recs[0]['kind'] == 'decision' and recs[0]['tags'] == ['workflow']
-    trace = (tmp_path / '.coder-agent' / 'sessions').glob('*.jsonl')
+    trace = (tmp_path / '.vela' / 'sessions').glob('*.jsonl')
     assert any(json.loads(l)['kind'] == 'memory_distilled' for f in trace for l in f.read_text().splitlines())
 
 def test_compact_distill_disabled_keeps_memory_untouched(tmp_path):
@@ -372,7 +373,7 @@ def test_compact_distill_dedupes_across_runs(tmp_path):
     assert len(recs) == 1 and recs[0]['text'] == 'same fact'
 
 def test_clean_memories_caps_and_defaults():
-    from coding_agent.llm import _clean_memories
+    from vela.llm import _clean_memories
     out = _clean_memories([{'text': 't' * 600}, {'kind': 'p', 'text': 'ok'}, {}, None])
     assert [o[1] for o in out] == ['ok'] and out[0][0] == 'p'
     assert _clean_memories('nope') == []

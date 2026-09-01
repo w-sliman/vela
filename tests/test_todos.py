@@ -1,18 +1,18 @@
 import json
 from types import SimpleNamespace as NS
 
-from coding_agent.config import Config
+from vela.config import Config
 from tests.conftest import make_config
-from coding_agent.llm import CodingAgent
-from coding_agent.session import Session
-from coding_agent.tools import ToolContext, diff_todos, dispatch, normalize_todos
-from coding_agent.ui import DebugUI
-from coding_agent.workspace import Workspace
-from coding_agent.shell import Shell
-from coding_agent.git import Git
-from coding_agent.browser import Browser
-from coding_agent.github import GitHub
-from coding_agent.sandbox import DockerSandbox
+from vela.llm import CodingAgent
+from vela.session import Session
+from vela.tools import ToolContext, diff_todos, dispatch, normalize_todos
+from vela.ui import DebugUI
+from vela.workspace import Workspace
+from vela.shell import Shell
+from vela.git import Git
+from vela.browser import Browser
+from vela.github import GitHub
+from vela.sandbox import DockerSandbox
 
 
 def cfg(tmp_path, **over):
@@ -101,7 +101,7 @@ def test_write_todos_missing_argument_errors_cleanly(tmp_path):
     assert out['status'] == 'error' and 'todos' in out['message']
 
 def test_tool_schema_declares_write_todos():
-    from coding_agent.tools import _REQ
+    from vela.tools import _REQ
     assert 'write_todos' in _REQ and _REQ['write_todos'] == ('todos',)
 
 
@@ -158,7 +158,7 @@ def test_debugui_renders_todos_always_visible():
     from rich.console import Console
     import io
     ui = DebugUI(console=Console(file=io.StringIO(), force_terminal=False), enabled=False)
-    from coding_agent.events import AgentEvent
+    from vela.events import AgentEvent
     ui.event(AgentEvent('todos', 'todo list updated',
                         {'items': [{'text': 'a', 'status': 'done'},
                                    {'text': 'b', 'status': 'in_progress'}]}))
@@ -171,9 +171,9 @@ def test_debugui_renders_todos_always_visible():
 # --- resume digest integration ---
 
 def test_resume_digest_carries_open_todos_only(tmp_path):
-    from coding_agent.resume import build_digest
+    from vela.resume import build_digest
     from datetime import datetime, timezone as tz
-    d = tmp_path / '.coder-agent' / 'sessions'; d.mkdir(parents=True)
+    d = tmp_path / '.vela' / 'sessions'; d.mkdir(parents=True)
     events = [
         {'timestamp': datetime.now(tz.utc).isoformat(), 'kind': 'user', 'payload': {'text': 'big task'}},
         {'timestamp': datetime.now(tz.utc).isoformat(), 'kind': 'todos_updated',
@@ -191,11 +191,11 @@ def test_resume_digest_carries_open_todos_only(tmp_path):
 # --- prompt + config ---
 
 def test_system_prompt_documents_todo_behavior():
-    from coding_agent.prompts import SYSTEM_PROMPT
+    from vela.prompts import SYSTEM_PROMPT
     assert 'write_todos' in SYSTEM_PROMPT and 'in_progress' in SYSTEM_PROMPT
 
 def test_show_todos_config_default_and_override(monkeypatch, tmp_path):
     monkeypatch.setenv('OPENAI_API_KEY', 'k'); monkeypatch.setenv('OPENAI_MODEL', 'm')
     assert Config.from_env(str(tmp_path)).show_todos is True
-    monkeypatch.setenv('CODER_TODOS', '0')
+    monkeypatch.setenv('VELA_TODOS', '0')
     assert Config.from_env(str(tmp_path)).show_todos is False
