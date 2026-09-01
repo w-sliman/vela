@@ -85,7 +85,9 @@ also type a new instruction instead, which simply continues the same context.
 
 ## Project convention files
 
-Put project-specific engineering conventions in a convention file at the root of the workspace, e.g.:
+Put project-specific engineering conventions in a convention file at the root of
+the workspace (`CONVENTIONS.md`, `CONTRIBUTING.md`, or whatever your project already
+uses), e.g.:
 
 ```text
 Always run pytest after changing Python files.
