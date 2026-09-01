@@ -84,3 +84,57 @@ def test_list_files_hides_git_dir(tmp_path):
     ctx.git.ensure_repo()
     files = ctx.workspace.list_files()
     assert not any(f.startswith('.git') for f in files)
+
+
+# ── checkpoints hold the user's work, never the agent's own state ────────────
+
+def _trace(root, text='{"kind":"user"}\n'):
+    d = root / '.coder-agent' / 'sessions'
+    d.mkdir(parents=True, exist_ok=True)
+    f = d / 'session.jsonl'
+    f.write_text(text)
+    return f
+
+
+def test_checkpoints_never_track_agent_state(tmp_path):
+    git = Git(tmp_path)
+    git.ensure_repo()
+    Workspace(tmp_path).write_file('app.py', 'print(1)\n')
+    _trace(tmp_path)
+    git.snapshot('auto: write_file app.py')
+    assert git.run('ls-files').stdout.split() == ['app.py']
+
+
+def test_undo_reverts_the_code_but_not_the_session_trace(tmp_path):
+    """`/undo` is `git reset --hard`. While traces were tracked it rewound them too,
+    truncating the history `/resume` reads back — including the running session's."""
+    git = Git(tmp_path)
+    git.ensure_repo()
+    ws = Workspace(tmp_path)
+    ws.write_file('README.md', 'project\n')
+    git.snapshot('initial')
+
+    trace = _trace(tmp_path)
+    ws.write_file('app.py', 'print(1)\n')
+    git.snapshot('auto: write_file app.py')
+    trace.write_text(trace.read_text() + '{"kind":"assistant"}\n')   # written after the checkpoint
+
+    ok, _ = git.undo_last_checkpoint()
+    assert ok
+    assert not (tmp_path / 'app.py').exists(), 'the edit is reverted'
+    assert trace.read_text().count('\n') == 2, 'the trace is not'
+
+
+def test_agent_state_committed_by_an_older_version_is_untracked_once(tmp_path):
+    """One-time migration for workspaces checkpointed before the exclude existed."""
+    git = Git(tmp_path)
+    git.ensure_repo()
+    trace = _trace(tmp_path)
+    git.run('add', '-f', '.coder-agent')          # simulate the old `add -A` behaviour
+    git.run('commit', '-m', 'legacy checkpoint')
+    assert '.coder-agent/sessions/session.jsonl' in git.run('ls-files').stdout
+
+    Git(tmp_path).ensure_repo()
+
+    assert git.run('ls-files').stdout.split() == []
+    assert trace.exists(), 'untracking must never delete the file'

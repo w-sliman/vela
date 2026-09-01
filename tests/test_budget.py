@@ -11,8 +11,10 @@ import pytest
 
 from coding_agent.budget import (
     DEFAULT_CHARS_PER_TOKEN,
+    ELIDED_STATUS,
     ContextBudget,
     blocks,
+    elidable,
     orphaned,
     payload_chars,
 )
@@ -20,6 +22,7 @@ from coding_agent.config import Config
 from coding_agent.conversation import AssistantMsg, ToolCall, ToolResult, UserMsg
 from coding_agent.llm import CodingAgent
 from coding_agent.session import Session
+from coding_agent.transports import ChatTransport
 from tests.conftest import make_config
 from tests.test_compact import FakeProvider, hist
 
@@ -217,17 +220,24 @@ def test_reduction_stops_when_nothing_more_can_be_freed(tmp_path):
     assert payload is not None
 
 
-def test_summarizer_failure_falls_back_to_dropping(tmp_path):
-    """Losing the summarizer degrades the conversation; it must not fail the request."""
+def test_summarizer_failure_still_reduces_without_losing_turns(tmp_path):
+    """Losing the summarizer degrades the conversation; it must not fail the request.
+
+    The next rung down is elision, not dropping: the bodies of tool results are given
+    up before whole turns are, so a dead summarizer costs re-readable content rather
+    than the shape of the conversation.
+    """
     p = FakeProvider(error=RuntimeError('summarizer down'))
     agent = make_agent(tmp_path, p, context_window_tokens=3000)
     agent.history = fat_hist(6)
-    before = len(agent.history)
-    agent._fit_to_budget()
-    assert len(agent.history) < before
+    before_items, before_chars = len(agent.history), payload_chars(agent._fit_to_budget())
+    assert before_chars < payload_chars(ChatTransport(None, 'm', '').encode(fat_hist(6)))
+    assert len(agent.history) == before_items, 'elision reduces in place; no turn is lost'
     assert not orphaned(agent.history)
-    kinds = [json.loads(x)['kind'] for x in agent.session.path.read_text().splitlines()]
-    assert 'budget_reduced' in kinds
+    methods = [json.loads(x)['payload'].get('method')
+               for x in agent.session.path.read_text().splitlines()
+               if json.loads(x)['kind'] == 'budget_reduced']
+    assert 'elide_result' in methods and 'drop_oldest' not in methods
 
 
 def test_auto_compact_disabled_skips_reduction_entirely(tmp_path):
@@ -297,3 +307,128 @@ def test_agent_budget_uses_the_configured_reserve(tmp_path):
     agent = make_agent(tmp_path, FakeProvider(''), context_window_tokens=10000,
                        reply_reserve_tokens=3000)
     assert agent.budget.limit == 7000
+
+
+# ── retries only repeat what a retry could fix ──────────────────────────────
+
+class _Status(Exception):
+    def __init__(self, status): super().__init__(f'status {status}'); self.status_code = status
+
+
+def test_deterministic_rejections_are_not_retried(tmp_path):
+    """A 400 is a verdict on the request: resending it unchanged only delays the
+    transport fallback that can actually fix it."""
+    agent = make_agent(tmp_path, FakeProvider(1))
+    calls = []
+
+    def bad():
+        calls.append(1); raise _Status(400)
+
+    with pytest.raises(_Status):
+        agent._with_retries(bad, delays=[0.0, 0.0, 0.0])
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize('status', [429, 500, 503, 408])
+def test_transient_statuses_are_retried(tmp_path, status):
+    agent = make_agent(tmp_path, FakeProvider(1))
+    calls = []
+
+    def flaky():
+        calls.append(1)
+        if len(calls) < 3: raise _Status(status)
+        return 'ok'
+
+    assert agent._with_retries(flaky, delays=[0.0, 0.0, 0.0]) == 'ok'
+    assert len(calls) == 3
+
+
+def test_errors_without_a_status_are_treated_as_transient(tmp_path):
+    agent = make_agent(tmp_path, FakeProvider(1))
+    calls = []
+
+    def flaky():
+        calls.append(1)
+        if len(calls) < 2: raise ConnectionError('reset')
+        return 'ok'
+
+    assert agent._with_retries(flaky, delays=[0.0, 0.0]) == 'ok'
+
+
+# ── elision: the rung that makes a single oversized turn reducible ───────────
+
+def _one_turn(results=4, size=8000):
+    """One user request that fans out into a long tool chain — the agentic shape."""
+    out = [UserMsg(text='read every file and summarise each one')]
+    for i in range(results):
+        out.append(AssistantMsg(tool_calls=[ToolCall(id=f'c{i}', name='read_file', arguments='{}')]))
+        out.append(ToolResult(call_id=f'c{i}', output='x' * size, name='read_file'))
+    return out
+
+
+def test_elision_takes_the_largest_result_and_keeps_its_pair():
+    history = _one_turn(results=3, size=1000)
+    history[4].output = 'y' * 9000                     # make one clearly the biggest
+    out, freed = ContextBudget(1000).elide_largest_result(history)
+    assert freed > 8000
+    assert len(out) == len(history) and not orphaned(out)
+    assert ELIDED_STATUS in out[4].output and out[4].call_id == history[4].call_id
+
+
+def test_elision_is_idempotent_so_reduction_cannot_spin():
+    b, history = ContextBudget(1000), _one_turn(results=1, size=9000)
+    for _ in range(5):
+        history, _ = b.elide_largest_result(history)
+    assert not elidable(history)
+    assert b.elide_largest_result(history)[1] == 0
+
+
+def test_small_results_are_not_worth_eliding():
+    """The stub would cost about what the body does, so this must report no progress."""
+    assert ContextBudget(1000).elide_largest_result(_one_turn(results=2, size=80))[1] == 0
+
+
+def test_a_single_block_with_a_fat_result_is_still_reducible():
+    b = ContextBudget(1000)
+    fat = [AssistantMsg(tool_calls=[ToolCall(id='c', name='read_file', arguments='{}')]),
+           ToolResult(call_id='c', output='x' * 9000, name='read_file')]
+    assert len(blocks(fat)) == 1
+    assert b.reducible(fat) is True, 'one block, but plenty of bulk to shed'
+
+
+def test_single_turn_overflow_converges_by_eliding_not_dropping(tmp_path):
+    """The real-world failure: one request, one turn, a window far too small.
+
+    Compaction has no older turns to summarize, so this used to fall straight to
+    dropping the oldest block — which cannot help when the bulk is in the newest one.
+    """
+    p = FakeProvider(json.dumps({'summary': 's'}))
+    agent = make_agent(tmp_path, p, context_window_tokens=8000)
+    agent.history = _one_turn(results=4, size=8000)
+    assert not agent.budget.fits(agent.transport.encode(agent.history)), 'precondition'
+
+    payload = agent._fit_to_budget()
+
+    assert agent.budget.fits(payload), 'reduction must actually converge'
+    assert not orphaned(agent.history)
+    assert [i.text for i in agent.history if isinstance(i, UserMsg)], 'the request survived'
+    methods = [json.loads(x)['payload'].get('method')
+               for x in agent.session.path.read_text().splitlines()
+               if json.loads(x)['kind'] == 'budget_reduced']
+    assert 'elide_result' in methods
+
+
+def test_forced_reduction_after_a_rejection_walks_the_whole_ladder(tmp_path):
+    """A rejection is a reason to reduce, not a reason to reduce badly: this used to
+    bypass compaction and elision and drop the oldest block outright."""
+    p = FakeProvider(json.dumps({'summary': 's'}))
+    agent = make_agent(tmp_path, p, context_window_tokens=200000)   # believes it all fits
+    agent.history = _one_turn(results=3, size=9000)
+
+    assert agent._force_reduction() is True
+
+    methods = [json.loads(x)['payload'].get('method')
+               for x in agent.session.path.read_text().splitlines()
+               if json.loads(x)['kind'] == 'budget_reduced']
+    assert methods and methods[0] == 'elide_result' and 'drop_oldest' not in methods
+    assert not orphaned(agent.history)

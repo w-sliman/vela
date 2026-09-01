@@ -1,5 +1,43 @@
 from __future__ import annotations
-import difflib, re
+import ast, difflib, re
+
+
+class SyntaxRegressionError(ValueError):
+    """An edit would turn a file that parses into one that does not."""
+
+
+def _python_syntax_error(text):
+    """Describe a Python syntax error in `text`, or None when it parses."""
+    try:
+        ast.parse(text)
+    except SyntaxError as exc:
+        return f'line {exc.lineno}: {exc.msg}'
+    except ValueError as exc:            # e.g. source containing null bytes
+        return str(exc)
+    return None
+
+
+def ensure_no_syntax_regression(path,original,updated):
+    """Refuse an edit that newly breaks a file the tools can parse.
+
+    Models mis-count line ranges and drop trailing newlines from anchors; the edit
+    tools then apply exactly what was asked and report success, so a file can be
+    silently left as invalid Python *and* committed as a checkpoint. Every such
+    failure observed in real use was caught by simply parsing the result.
+
+    The test is a regression, not validity: a file that was already broken may be
+    edited freely, because refusing there would block the repair. Non-Python files
+    are not checked — guessing at a syntax we cannot parse would be worse than
+    letting the edit through.
+    """
+    if not str(path).endswith('.py'):return
+    broken=_python_syntax_error(updated)
+    if not broken or _python_syntax_error(original):return
+    raise SyntaxRegressionError(
+        f'refusing the edit: it would leave {path} with a Python syntax error ({broken}). '
+        'The file parsed before this change, so the replacement is malformed — commonly a '
+        'line range that did not cover what you meant, or an anchor missing its trailing '
+        'newline. Re-read the file and retry against its current contents.')
 
 def _nearest_lines(original, old, n=3, cutoff=0.4):
     """Return up to n 'line N: <text>' strings closest to old, for error hints."""

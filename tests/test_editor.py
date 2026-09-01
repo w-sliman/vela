@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from tests.conftest import make_config
@@ -60,13 +62,79 @@ def test_replace_lines_rejects_bad_range():
         replace_lines(ORIGINAL, 5, 6, 'x')
 
 
+def _hash(ctx, path):
+    return json.loads(dispatch(ctx, 'read_file', {'path': path}))['sha256']
+
+
 def test_line_mode_end_to_end(tmp_path):
     ctx = context(tmp_path)
     dispatch(ctx, 'write_file', {'path': 'app.py', 'content': 'value = 1\nsecond\n'})
     result = dispatch(ctx, 'replace_text',
-                      {'path': 'app.py', 'start_line': 1, 'end_line': 1, 'new': 'value = 9\n'})
+                      {'path': 'app.py', 'start_line': 1, 'end_line': 1, 'new': 'value = 9\n',
+                       'expected_hash': _hash(ctx, 'app.py')})
     assert '"status": "completed"' in result
     assert (tmp_path / 'app.py').read_text() == 'value = 9\nsecond\n'
+
+
+def test_line_mode_requires_a_hash(tmp_path):
+    """A line range is positional — nothing in it is checked against the text being
+    replaced, so the hash is all that stands between a mis-counted range and a
+    silently mangled file."""
+    ctx = context(tmp_path)
+    dispatch(ctx, 'write_file', {'path': 'app.py', 'content': 'value = 1\nsecond\n'})
+    result = json.loads(dispatch(ctx, 'replace_text',
+                                 {'path': 'app.py', 'start_line': 1, 'new': 'value = 9\n'}))
+    assert result['error_type'] == 'ConcurrentEditError'
+    assert (tmp_path / 'app.py').read_text() == 'value = 1\nsecond\n', 'unchanged'
+
+
+def test_overwriting_an_existing_file_requires_a_hash(tmp_path):
+    """write_file without a hash silently destroyed edits made since the read."""
+    ctx = context(tmp_path)
+    dispatch(ctx, 'write_file', {'path': 'app.py', 'content': 'original = 1\n'})
+    result = json.loads(dispatch(ctx, 'write_file', {'path': 'app.py', 'content': 'clobbered = 1\n'}))
+    assert result['error_type'] == 'ConcurrentEditError'
+    assert (tmp_path / 'app.py').read_text() == 'original = 1\n'
+
+
+def test_creating_a_new_file_needs_no_hash(tmp_path):
+    """There is nothing to race against, so the guard must not obstruct creation."""
+    ctx = context(tmp_path)
+    assert '"status": "completed"' in dispatch(ctx, 'write_file',
+                                               {'path': 'fresh.py', 'content': 'x = 1\n'})
+
+
+# ── an edit may not newly break a file the tools can parse ──────────────────
+
+def test_edit_that_would_break_python_syntax_is_refused(tmp_path):
+    """Every corruption seen in real use — a mis-counted range, an anchor missing its
+    trailing newline — produced a file that simply would not parse."""
+    ctx = context(tmp_path)
+    dispatch(ctx, 'write_file', {'path': 'm.py', 'content': 'def f():\n    return 1\n'})
+    result = json.loads(dispatch(ctx, 'replace_text',
+                                 {'path': 'm.py', 'old': '    return 1\n', 'new': '    return 1\ndef g(:\n',
+                                  'expected_hash': _hash(ctx, 'm.py')}))
+    assert result['error_type'] == 'SyntaxRegressionError'
+    assert 'recovery' in result
+    assert (tmp_path / 'm.py').read_text() == 'def f():\n    return 1\n', 'nothing written'
+
+
+def test_an_already_broken_file_can_still_be_repaired(tmp_path):
+    """The rule is no *regression*: refusing here would block the fix."""
+    ctx = context(tmp_path)
+    (tmp_path / 'broken.py').write_text('def f(:\n')
+    result = dispatch(ctx, 'replace_text',
+                      {'path': 'broken.py', 'old': 'def f(:\n', 'new': 'def f():\n    pass\n',
+                       'expected_hash': _hash(ctx, 'broken.py')})
+    assert '"status": "completed"' in result
+
+
+def test_non_python_files_are_not_syntax_checked(tmp_path):
+    ctx = context(tmp_path)
+    dispatch(ctx, 'write_file', {'path': 'notes.md', 'content': '# hi\n'})
+    result = dispatch(ctx, 'write_file', {'path': 'notes.md', 'content': 'def f(:\n',
+                                          'expected_hash': _hash(ctx, 'notes.md')})
+    assert '"status": "completed"' in result
 
 
 def test_text_mode_requires_old_when_no_line_range(tmp_path):

@@ -336,14 +336,15 @@ def test_memory_failure_never_breaks_request(tmp_path, monkeypatch):
 
 def test_compact_distills_valid_memories_and_drops_junk(tmp_path):
     from tests.test_compact import hist
-    payload = json.dumps({'summary': 's', 'keep_last_turns': 2, 'memories': [
+    payload = json.dumps({'summary': 's', 'memories': [
         {'kind': 'decision', 'text': 'ship small PRs', 'tags': ['workflow'], 'paths': ['docs/']},
         {'bad': 'shape'}, {'kind': 'decision'}, 'not-a-dict']})
     p = FakeProvider(payload)
     agent = make_agent(tmp_path, p); agent.history = hist(4)
     info = agent.compact()
     assert info['compacted'] and info['memories_saved'] == 1
-    assert len(agent.history) == 7   # summary + last 2 turns x 3 items each
+    kept = agent.config.compact_keep_turns
+    assert len(agent.history) == 1 + kept * 3   # summary + kept turns x 3 items each
     recs = ProjectMemory(tmp_path).records()
     assert len(recs) == 1 and recs[0]['kind'] == 'decision' and recs[0]['tags'] == ['workflow']
     trace = (tmp_path / '.coder-agent' / 'sessions').glob('*.jsonl')

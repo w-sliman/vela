@@ -11,7 +11,7 @@ class Config:
     command_timeout:int; enable_browser:bool; enable_github:bool; enable_sandbox:bool
     telemetry:bool; debug:bool
     price_input_per_million:float=0.0; price_output_per_million:float=0.0; context_window_tokens:int=128000
-    request_retries:int=2; auto_compact:bool=True
+    request_retries:int=2; auto_compact:bool=True; compact_keep_turns:int=3
     reply_reserve_tokens:int=0        # 0 -> ContextBudget picks window//8
     context_window_explicit:bool=False  # set by hand -> skip probing (a rejection still wins)
     stream_chat:bool=True; auto_checkpoint:bool=True
@@ -39,6 +39,7 @@ class Config:
           float(os.getenv('CODER_INPUT_PRICE_PER_MILLION','0')),float(os.getenv('CODER_OUTPUT_PRICE_PER_MILLION','0')),
           int(os.getenv('CODER_CONTEXT_WINDOW','128000')),
           int(os.getenv('CODER_REQUEST_RETRIES','2')),os.getenv('CODER_AUTO_COMPACT','1')!='0',
+          max(1,int(os.getenv('CODER_COMPACT_KEEP_TURNS','3'))),
           int(os.getenv('CODER_REPLY_RESERVE_TOKENS','0')),
           bool(os.getenv('CODER_CONTEXT_WINDOW')),
           os.getenv('CODER_STREAM','1')!='0',os.getenv('CODER_AUTO_CHECKPOINT','1')!='0',

@@ -51,6 +51,14 @@ def test_responses_encoding_uses_function_call_items_and_no_system_message():
     assert out['call_id'] == 'c1'
 
 
+def test_responses_role_items_declare_their_type():
+    """A bare role item is rejected by strict Responses servers ("Cannot determine
+    type of 'item'"), which silently costs the richer transport for a whole session."""
+    items = ResponsesTransport(None, 'm', 'SYS').encode(HISTORY)
+    roles = [i for i in items if 'role' in i]
+    assert roles and all(i.get('type') == 'message' for i in roles)
+
+
 def test_both_encodings_carry_the_same_conversation():
     """Neither format may drop a turn — that is what makes a swap lossless."""
     chat = ChatTransport(None, 'm', 'SYS').encode(HISTORY)

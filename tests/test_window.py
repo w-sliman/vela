@@ -187,6 +187,54 @@ def test_probe_is_used_when_the_window_was_not_stated(tmp_path, monkeypatch):
     assert WindowStore(tmp_path).get(cfg.base_url, cfg.model) == 4096, 'probe result cached'
 
 
+def test_a_cached_probe_does_not_outrank_explicit_configuration(tmp_path, monkeypatch):
+    """The regression this provenance exists for: a probe cached by an earlier
+    session used to read back as a rejection, silently voiding CODER_CONTEXT_WINDOW
+    from the second run onwards."""
+    monkeypatch.setattr('coding_agent.window.probe', lambda *a, **k: 65536)
+    loose = make_config(tmp_path, context_window_tokens=128000, context_window_explicit=False)
+    assert resolve(loose, WindowStore(tmp_path)) == (65536, 'probed')   # session one caches it
+
+    stated = make_config(tmp_path, context_window_tokens=8000, context_window_explicit=True)
+    assert resolve(stated, WindowStore(tmp_path)) == (8000, 'configured')
+
+
+def test_a_cached_rejection_still_outranks_explicit_configuration(tmp_path):
+    store = WindowStore(tmp_path)
+    store.remember('http://localhost:9/v1', 'model-x', 8192, 'learned')
+    cfg = make_config(tmp_path, context_window_tokens=128000, context_window_explicit=True)
+    assert resolve(cfg, store) == (8192, 'learned'), 'the server is never wrong about its ceiling'
+
+
+def test_a_probe_never_overwrites_a_cached_rejection(tmp_path):
+    store = WindowStore(tmp_path)
+    store.remember('http://x/v1', 'm', 8192, 'learned')
+    store.remember('http://x/v1', 'm', 65536, 'probed')
+    assert store.entry('http://x/v1', 'm') == (8192, 'learned')
+
+
+def test_legacy_bare_integer_entries_are_read_as_rejections(tmp_path):
+    """Probing did not cache before provenance existed, so a bare int was a rejection."""
+    store = WindowStore(tmp_path)
+    store.path.parent.mkdir(parents=True, exist_ok=True)
+    store.path.write_text(json.dumps({store.key('http://x/v1', 'm'): 8192}))
+    assert store.entry('http://x/v1', 'm') == (8192, 'learned')
+
+
+def test_llamacpp_rejection_yields_the_ceiling_not_the_request_size():
+    """The wording that defeated the parser in real use: the limit is the second
+    number in the sentence, and the body also names it as `n_ctx`."""
+    msg = ("Error code: 400 - {'error': {'code': 400, 'message': 'request (90016 tokens) "
+           "exceeds the available context size (65536 tokens), try increasing it', "
+           "'type': 'exceed_context_size_error', 'n_prompt_tokens': 90016, 'n_ctx': 65536}}")
+    assert looks_like_overflow(msg)
+    assert parse_limit(msg) == 65536
+
+
+def test_the_limit_is_read_from_prose_when_no_field_is_present():
+    assert parse_limit('request exceeds the available context size (65536 tokens)') == 65536
+
+
 # ── the agent learns from a rejection and retries ───────────────────────────
 
 class RejectingProvider:

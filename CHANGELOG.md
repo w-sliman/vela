@@ -5,6 +5,70 @@ version headings below record development history rather than shipped releases.
 
 ## Unreleased
 
+### Findings from the first end-to-end run against a live model
+Everything below was found by driving the REPL against a real llama.cpp endpoint
+rather than by reading the code. The safety layer held throughout — path, command
+and URL containment all refused every attempt — but four designs that were correct
+in unit tests were wrong in practice.
+
+- **The Responses transport never worked against a strict server.** Role items were
+  encoded bare, and llama.cpp answers `Cannot determine type of 'item'` rather than
+  inferring one. The failure only appeared once a conversation contained an
+  assistant *text* turn, so it looked healthy until the second exchange, then fell
+  back to chat for the rest of the session. Role items now declare
+  `'type':'message'`, which OpenAI accepts too.
+- **Reduction had no rung for a single oversized turn.** Compaction and dropping
+  both reason in user-turns, but one agentic request ("read every file and
+  summarise each one") is a single turn that can fill the window by itself:
+  summarizing had no older turns to work with, and dropping the *oldest* block could
+  not help when the bulk was in the newest. In a real run this produced eight drops,
+  zero compactions, and an answer covering two of eight files. Reduction is now an
+  explicit ladder — compact, then elide the largest tool result, then drop — and
+  elision keeps every call/result pair intact while discarding content the model can
+  simply read again. The forced reduction after a server rejection walks the same
+  ladder instead of dropping outright.
+- **A cached probe outranked the operator's own setting.** Probe results were stored
+  in the same cache that was read back as "learned", so from the second session
+  onwards `CODER_CONTEXT_WINDOW` was silently ignored on any endpoint already
+  probed. The cache now records provenance: a rejection still overrides
+  configuration, a probe yields to it.
+- **Rejection parsing missed the wording that mattered.** llama.cpp says `exceeds the
+  available context size (65536 tokens)` and none of the seven patterns matched, so
+  the highest-authority source never fired: nine rejected requests, nothing cached,
+  and the conversation eventually lost. The parser now reads the structured field
+  the server already sends (`n_ctx`) before trying prose, and the prose patterns
+  cover "context size". The same replay now learns the ceiling on the first
+  rejection and completes the task.
+- **How much history a compaction keeps was the summarizer's call.** Asked to choose,
+  the model picked the most aggressive value available — and keeping one turn leaves
+  `[summary] + one turn`, which is two turns, which is exactly where compaction
+  refuses to run again, so every later reduction fell to a blunter method. It is now
+  `CODER_COMPACT_KEEP_TURNS` (default 3) and the summarizer is no longer asked.
+- **`/undo` rewrote the session traces.** Checkpoints ran `git add -A`, which swept
+  in `.coder-agent/`, so `git reset --hard` rolled back the traces along with the
+  code — truncating the history `/resume` reads back, including the running
+  session's. Observed live: `/resume` reported a completed task as still in progress.
+  Agent state is now excluded from checkpoints, and a workspace polluted by an older
+  version is untracked once, without deleting anything.
+- **Edits were applied but never checked.** Three files were corrupted across three
+  sessions — a line range that did not cover what the model meant, an anchor missing
+  its trailing newline, an 18,625-character replacement sent into a field documented
+  at 8,000 — each reported `"status": "completed"` and each was committed as a
+  checkpoint, so `/undo` restored invalid Python. Edits that would newly break a
+  parseable file are now refused (a file that was already broken can still be
+  repaired), the schema's declared limits are enforced, and edits that cannot check
+  themselves against the current text — overwriting an existing file, replacing a
+  line range — now require `expected_hash` instead of merely recommending it. That
+  guard existed but was opt-in, and the model simply omitted it: `write_file` with no
+  hash silently destroyed a concurrent edit.
+- **Context percentages were measured against the configured window** rather than the
+  one in force, so `/usage` and the turn footer reported `128.0k` while the agent was
+  actually running on a learned 65,536 — understating real pressure roughly twofold.
+- Deterministic rejections are no longer retried. A `400` was retried three times
+  before the transport fallback that actually fixed it; only statuses a retry could
+  plausibly clear are repeated now.
+
+
 ### Sub-agent retries and outbound URL containment
 - **`delegate_role` was the one model call without the retry policy.** It called the
   provider directly, so a transient blip failed the delegation outright. Backoff moved

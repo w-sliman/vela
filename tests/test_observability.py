@@ -30,3 +30,27 @@ def test_shell_reports_single_honest_output(tmp_path):
     assert result.returncode == 3
     assert 'boom' in result.stdout
     assert result.stderr == ''
+
+
+def test_usage_events_report_the_window_in_force_not_the_configured_one(tmp_path):
+    """A window learned from the server overrules configuration, so every context
+    percentage must be measured against it — reporting the config default understated
+    real context pressure by about half whenever the two disagreed."""
+    import json as _json
+    from tests.test_compact import FakeProvider
+    from coding_agent.budget import ContextBudget
+    from coding_agent.events import EventBus
+    from coding_agent.llm import CodingAgent
+    from coding_agent.session import Session
+    from tests.conftest import make_config
+
+    seen = []
+    bus = EventBus(seen.append)
+    agent = CodingAgent(make_config(tmp_path, context_window_tokens=128000), None,
+                        Session(tmp_path), bus)
+    agent.provider = FakeProvider(_json.dumps({'summary': 's'}))
+    agent.budget = ContextBudget(65536)          # what the server actually said
+
+    agent._emit_usage({'input': 1000, 'output': 10, 'total': 1010})
+
+    assert [e.data['window'] for e in seen if e.kind == 'usage'] == [65536]

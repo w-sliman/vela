@@ -10,8 +10,8 @@ from coding_agent.conversation import AssistantMsg, ToolCall, ToolResult, UserMs
 from coding_agent.session import Session
 
 
-def cfg(tmp_path):
-    return make_config(tmp_path)
+def cfg(tmp_path, **over):
+    return make_config(tmp_path, **over)
 
 
 def hist(n=4):
@@ -39,16 +39,16 @@ class FakeProvider:
         return NS(choices=[NS(message=msg)], usage=usage)
 
 
-def agent_with(tmp_path, provider):
-    agent = CodingAgent(cfg(tmp_path), None, Session(tmp_path))
+def agent_with(tmp_path, provider, **over):
+    agent = CodingAgent(cfg(tmp_path, **over), None, Session(tmp_path))
     agent.provider = provider
     agent.history = hist(4)
     return agent
 
 
-def test_compact_prepends_summary_and_keeps_last_turn_verbatim(tmp_path):
-    p = FakeProvider(json.dumps({'summary': 'did stuff', 'keep_last_turns': 1}))
-    agent = agent_with(tmp_path, p)
+def test_compact_prepends_summary_and_keeps_recent_turns_verbatim(tmp_path):
+    p = FakeProvider(json.dumps({'summary': 'did stuff'}))
+    agent = agent_with(tmp_path, p, compact_keep_turns=1)
     info = agent.compact()
     assert info['compacted'] and info['turns_removed'] == 3 and info['turns_kept'] == 1
     h = agent.history
@@ -60,6 +60,27 @@ def test_compact_prepends_summary_and_keeps_last_turn_verbatim(tmp_path):
     assert not _orphaned(h)
 
 
+def test_keep_turns_is_the_operators_setting_not_the_summarizers(tmp_path):
+    """The summarizer has no view of the token budget, and when it was asked it chose
+    the most aggressive value available — which then left too few turns for the next
+    compaction to run at all."""
+    p = FakeProvider(json.dumps({'summary': 's', 'keep_last_turns': 1}))
+    agent = agent_with(tmp_path, p, compact_keep_turns=3)
+    assert agent.compact()['turns_kept'] == 3
+    assert 'keep_last_turns' not in p.calls[0]['messages'][0]['content']
+
+
+def test_default_keep_leaves_enough_turns_to_compact_again(tmp_path):
+    """keep=1 yields `[summary] + one turn` = two turns, which is exactly where
+    compaction refuses; the default must stay clear of that trap."""
+    from coding_agent.llm import _turns
+    p = FakeProvider(json.dumps({'summary': 's'}))
+    agent = agent_with(tmp_path, p)
+    agent.history = hist(6)
+    agent.compact()
+    assert len(_turns(agent.history)) > 2
+
+
 def test_focus_goes_to_prompt_and_summary_header(tmp_path):
     p = FakeProvider(json.dumps({'summary': 'stuff happened', 'keep_last_turns': 2}))
     agent = agent_with(tmp_path, p)
@@ -69,11 +90,11 @@ def test_focus_goes_to_prompt_and_summary_header(tmp_path):
     assert 'focus: the migration plan' in agent.history[0].text
 
 
-def test_keep_is_clamped_to_sane_range(tmp_path):
-    p = FakeProvider(json.dumps({'summary': 's', 'keep_last_turns': 99}))
-    agent = agent_with(tmp_path, p)
+def test_keep_is_clamped_to_the_turns_actually_available(tmp_path):
+    p = FakeProvider(json.dumps({'summary': 's'}))
+    agent = agent_with(tmp_path, p, compact_keep_turns=99)
     info = agent.compact()
-    assert info['turns_kept'] == 3          # clamped to KEEP_MAX(5) then to available turns
+    assert info['turns_kept'] == 3          # 4 turns in history, one must be summarized
     assert info['turns_removed'] == 1
 
 
@@ -81,7 +102,7 @@ def test_non_json_prose_still_works_as_summary(tmp_path):
     p = FakeProvider('We fixed the parser and updated tests.')
     agent = agent_with(tmp_path, p)
     info = agent.compact()
-    assert info['compacted'] and info['turns_kept'] == 2   # DEFAULT_KEEP_TURNS
+    assert info['compacted'] and info['turns_kept'] == agent.config.compact_keep_turns
     assert 'fixed the parser' in agent.history[0].text
 
 

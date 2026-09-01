@@ -108,11 +108,15 @@ class ResponsesTransport:
         self.provider=provider;self.model=model;self.system=system_prompt
 
     def encode(self,history,advisory=()):
+        # Role items carry an explicit 'type': the Responses `input` list is
+        # heterogeneous, and strict servers (llama.cpp) reject a bare role item with
+        # "Cannot determine type of 'item'" rather than inferring it. OpenAI accepts
+        # the explicit form too, so it is the portable spelling.
         out=[]
         for item in list(history)+_advisory(advisory):
-            if isinstance(item,UserMsg):out.append({'role':'user','content':item.text})
+            if isinstance(item,UserMsg):out.append({'type':'message','role':'user','content':item.text})
             elif isinstance(item,AssistantMsg):
-                if item.text:out.append({'role':'assistant','content':item.text})
+                if item.text:out.append({'type':'message','role':'assistant','content':item.text})
                 for c in item.tool_calls:
                     out.append({'type':'function_call','call_id':c.id,'name':c.name,
                                 'arguments':c.arguments})

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from .providers import OpenAICompatibleProvider,backoff_delays,with_retries
 from .prompts import SYSTEM_PROMPT
 from .budget import ContextBudget,payload_chars
-from .window import WindowStore,looks_like_overflow,parse_limit,resolve as resolve_window
+from .window import REJECTION,WindowStore,looks_like_overflow,parse_limit,resolve as resolve_window
 from .telemetry import Metrics,Timer,extract_usage,USAGE_ADVICE
 from .tools import dispatch,tool_schemas
 from .json_repair import parse_tool_arguments
@@ -14,14 +14,21 @@ from .conversation import AssistantMsg,ToolResult,UserMsg,INTERRUPTED,answered_i
 from . import transports
 
 COMPACT_SYSTEM=('You compress coding-agent conversation transcripts. Respond with ONLY a JSON object: '
- '{"summary":"...","keep_last_turns":<int 1-5>,"memories":[{"kind":"...","text":"..."}]}. The summary must preserve: current task state, files '
- 'touched, key decisions, and open items. keep_last_turns selects how many of the most recent '
- 'user-turns are already covered by your summary and should additionally be kept verbatim. '
- '"memories" lists durable project knowledge from the dropped turns worth keeping after this '
- 'conversation ends (facts, decisions, preferences; optional "tags" and "paths" arrays sharpen '
- 'later retrieval). Keep each text under ~200 chars; use an empty list when nothing qualifies.')
-DEFAULT_KEEP_TURNS=2
-KEEP_MAX=5
+ '{"summary":"...","memories":[{"kind":"...","text":"..."}]}. The summary must preserve: current '
+ 'task state, files touched, key decisions, and open items. '
+ '"memories" lists durable knowledge about THIS PROJECT from the dropped turns worth keeping '
+ 'after the conversation ends (facts, decisions, preferences; optional "tags" and "paths" arrays '
+ 'sharpen later retrieval). Never record instructions about how to operate the agent or its tools, '
+ 'and never record a transient error or a recovery step — those are not project knowledge. '
+ 'Keep each text under ~200 chars; use an empty list when nothing qualifies.')
+
+# How many recent user-turns survive a compaction verbatim. This is the operator's
+# call, not the summarizer's: the model cannot see the token budget, and when it was
+# asked it chose the most aggressive value available. Choosing 1 was also
+# self-defeating — it leaves `[summary] + one turn`, which is two turns, which is
+# exactly the size at which compaction refuses to run again, so every later reduction
+# fell to a blunter rung.
+MIN_KEEP_TURNS=1
 
 class PauseInterrupt(Exception):
     """Raised when the user interrupted a run; context stays intact for /continue."""
@@ -192,13 +199,10 @@ class CodingAgent:
         self.session.record('usage',u if u is not None else {'available':False,'advice':USAGE_ADVICE})
         raw=(r.choices[0].message.content or '').strip()
         value,err,repaired=parse_tool_arguments(raw)
-        if err or not isinstance(value,dict) or 'summary' not in value:
-            summary=raw;keep=DEFAULT_KEEP_TURNS  # non-JSON prose still works as a summary
-        else:
-            summary=str(value.get('summary',''))
-            try:keep=int(value.get('keep_last_turns',DEFAULT_KEEP_TURNS))
-            except (TypeError,ValueError):keep=DEFAULT_KEEP_TURNS
-        keep=max(1,min(KEEP_MAX,keep));keep=min(keep,len(turns)-1)
+        # Non-JSON prose still works as a summary; only the summary is taken from the
+        # model, because how much history to keep is a budget decision, not a writing one.
+        summary=raw if (err or not isinstance(value,dict) or 'summary' not in value) else str(value.get('summary',''))
+        keep=min(max(MIN_KEEP_TURNS,self.config.compact_keep_turns),len(turns)-1)
         header='[Conversation summary]'+(f' — focus: {focus}' if focus else '')
         new_history=[UserMsg(text=f'{header}\n{summary}')]
         for t in turns[-keep:]:new_history.extend(t)
@@ -255,7 +259,7 @@ class CodingAgent:
         if len(blob)>max_chars:blob=blob[-max_chars:]
         focus_line=f'Focus for this compaction: {focus}\n' if focus else ''
         return (f'{focus_line}Transcript (oldest first):\n{blob}\n\n'
-                'Return ONLY JSON: {"summary": "...", "keep_last_turns": <int 1-5>, "memories": [{"kind": "...", "text": "..."}]}')
+                'Return ONLY JSON: {"summary": "...", "memories": [{"kind": "...", "text": "..."}]}')
     def _advisory_blocks(self):
         """Blocks attached to the outgoing payload but never persisted into history:
         this turn's memory recall and the current todo queue."""
@@ -315,11 +319,14 @@ class CodingAgent:
         Returns the re-encoded payload once it is genuinely smaller, or None when
         the conversation cannot be reduced any further.
         """
-        for method in (self._reduce_by_compaction,self._reduce_by_dropping):
+        for method in self._reduction_ladder():
             if not method(before):continue
             payload=self.transport.encode(self.history,advisory)
             if self.budget.estimate(payload)<before:return payload
         return None
+    def _reduction_ladder(self):
+        """Reduction methods in ascending order of what they cost the conversation."""
+        return (self._reduce_by_compaction,self._reduce_by_eliding,self._reduce_by_dropping)
     def _reduce_by_compaction(self,before):
         """Summarize the older turns. False when unavailable or it fails."""
         try:res=self.compact()
@@ -335,6 +342,20 @@ class CodingAgent:
                                               'turns_removed':res['turns_removed'],
                                               'turns_kept':res['turns_kept']})
         return True
+    def _reduce_by_eliding(self,before):
+        """Trade the largest tool result's body for context, keeping its pair intact.
+
+        The rung that makes a single oversized turn reducible: there are no older
+        turns to summarize and no older blocks worth dropping, but the file dump that
+        filled the window can be re-read on demand.
+        """
+        history,freed=self.budget.elide_largest_result(self.history)
+        if not freed:return False
+        self.history=history
+        self.events.emit('info',f'context budget: elided a tool result ({freed:,} chars)')
+        self.session.record('budget_reduced',{'method':'elide_result','freed_chars':freed,
+                                              'estimated_tokens':before,'limit':self.budget.limit})
+        return True
     def _reduce_by_dropping(self,before):
         """Lossy fallback: discard the oldest whole block."""
         self.history,dropped=self.budget.drop_oldest(self.history)
@@ -347,7 +368,7 @@ class CodingAgent:
         """Publish per-turn token/context usage for live display."""
         if u is not None:
             self.events.emit('usage','model usage',available=True,input=u['input'],output=u['output'],
-                             total=u['total'],last_input=u['input'],window=self.config.context_window_tokens)
+                             total=u['total'],last_input=u['input'],window=self.budget.window)
         else:
             self.events.emit('usage','model usage',available=False,advice=USAGE_ADVICE)
     def run(self,user_text):
@@ -407,19 +428,22 @@ class CodingAgent:
         previous=self.budget.window
         self.budget=ContextBudget(limit,reserve_tokens=self.config.reply_reserve_tokens or None,
                                   chars_per_token=self.budget.chars_per_token)
-        self.window_source='learned'
-        self.windows.remember(self.config.base_url,self.config.model,limit)
-        self.session.record('context_window',{'tokens':limit,'source':'learned','previous':previous})
+        self.window_source=REJECTION
+        self.windows.remember(self.config.base_url,self.config.model,limit,REJECTION)
+        self.session.record('context_window',{'tokens':limit,'source':REJECTION,'previous':previous})
         self.events.emit('info',f'context window learned from the server: {previous} → {limit} tokens')
         return True
     def _force_reduction(self):
-        """Shed one block when the budget already believes the payload fits.
+        """Make room when the budget already believes the payload fits.
 
-        Reached when the server rejects something our estimate accepted — the
-        estimate is wrong, so make room rather than resending the same payload.
+        Reached when the server rejects something our estimate accepted — the estimate
+        is wrong, so shed something rather than resending the same payload. It walks
+        the same ladder as a measured reduction: a rejection is a reason to reduce,
+        never a reason to reduce badly.
         """
         if not self.budget.reducible(self.history):return False
-        return self._reduce_by_dropping(self.budget.estimate(self.transport.encode(self.history)))
+        before=self.budget.estimate(self.transport.encode(self.history))
+        return any(method(before) for method in self._reduction_ladder())
     def _next_transport(self):
         """The next transport to try after the current one failed, or None."""
         try:i=self._transports.index(self.transport)

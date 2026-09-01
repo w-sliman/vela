@@ -67,10 +67,10 @@ def main():
                 console.print(f'[dim]context window: {agent.budget.window:,} tokens ({agent.window_source}), '
                               f'{agent.budget.limit:,} usable after reply headroom[/dim]');continue
             if text=='/usage':
-                m=agent.metrics;win=c.context_window_tokens;m.price(c.price_input_per_million,c.price_output_per_million)
+                m=agent.metrics;win=agent.budget.window;m.price(c.price_input_per_million,c.price_output_per_million)
                 avg=(m.latency_ms/m.calls) if m.calls else 0.0
                 console.print(f'[dim]LLM calls: {m.calls} | tokens in/out/total: {m.input_tokens}/{m.output_tokens}/{m.input_tokens+m.output_tokens} | est. cost: ${m.estimated_cost_usd:.4f} | avg latency: {avg:.0f} ms[/dim]')
-                console.print(f'[dim]context: last prompt {_fmt_tokens(m.last_input_tokens)} of {_fmt_tokens(win)} window ({(m.last_input_tokens/win*100 if win else 0):.0f}%) | window set via CODER_CONTEXT_WINDOW[/dim]' if m.last_input_tokens else f'[dim]context: no usage reported yet (window {win:,}, set via CODER_CONTEXT_WINDOW)[/dim]')
+                console.print(f'[dim]context: last prompt {_fmt_tokens(m.last_input_tokens)} of {_fmt_tokens(win)} window ({(m.last_input_tokens/win*100 if win else 0):.0f}%) | window {agent.window_source}[/dim]' if m.last_input_tokens else f'[dim]context: no usage reported yet (window {win:,}, {agent.window_source})[/dim]')
                 if m.missing_usage:console.print(f'[yellow]{m.missing_usage} call(s) reported no usage data (excluded from totals). {USAGE_ADVICE}[/]')
                 continue
             if text=='/undo':
@@ -146,7 +146,7 @@ def main():
             console.print('[bold magenta]agent[/bold magenta] thinking…')
             r=agent.run(text)
             if not r.streamed:console.print(Markdown(r.text))
-            m=agent.metrics;win=c.context_window_tokens;ctxpct=(m.last_input_tokens/win*100) if win and m.last_input_tokens else 0.0
+            m=agent.metrics;win=agent.budget.window;ctxpct=(m.last_input_tokens/win*100) if win and m.last_input_tokens else 0.0
             console.print(f'[dim]tool calls: {r.tool_calls} | latency: {r.metrics["latency_ms"]:.0f} ms | session: {session.path.name}[/dim]')
             mids=agent.last_memory_ids
             if mids:console.print(f'[dim]memory: {", ".join(mids)}[/dim]')

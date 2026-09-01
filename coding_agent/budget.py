@@ -5,9 +5,19 @@ once-per-request auto-compact reading the *previous* call's usage, and a manual
 `/compact`. None measured the actual outgoing payload against the actual limit.
 
 Trimming and compaction were never two concerns either. Both answer *reduce the
-conversation to fit* — compaction is the reduction that preserves knowledge,
-dropping blocks is the one that does not. They are ordered here as preference and
-fallback, so losing history is the exception rather than the default path.
+conversation to fit*. Reduction is a ladder, tried in order of what it costs:
+
+1. **Compact** older user turns into a summary — preserves knowledge.
+2. **Elide** the bulk of the largest tool results, keeping every call/result pair
+   intact — preserves structure, discards re-readable content.
+3. **Drop** the oldest whole block — preserves nothing.
+
+Rung 2 exists because rungs 1 and 3 both reason in *user turns*, and a single
+agentic turn ("read every file and summarise each one") can be the entire window
+on its own. Summarizing cannot help there — there are no older turns — and
+dropping the oldest block cannot either, because the bulk is in the newest one.
+Eliding a file dump the model can simply read again is the cheap, correct move,
+and it is what makes single-turn overflow converge at all.
 
 Measurement runs on the encoded payload, because the transport is the only thing
 that knows what will actually be sent. Estimates self-calibrate: whenever the
@@ -27,6 +37,16 @@ from .conversation import ToolResult, is_call
 DEFAULT_CHARS_PER_TOKEN=3.6
 MIN_CHARS_PER_TOKEN=1.5
 MAX_CHARS_PER_TOKEN=12.0
+
+# Marks a tool result whose body was traded for context. It is deliberately a
+# status the model already understands from failed tools, and it says how to get
+# the content back — the alternative is a model that silently reasons about a file
+# it can no longer see.
+ELIDED_STATUS='elided_for_context'
+
+# Results at or below this are not worth eliding: the stub costs nearly as much as
+# the body, so elision would report progress without freeing anything.
+MIN_ELIDABLE_CHARS=600
 
 
 def payload_chars(payload):
@@ -54,6 +74,18 @@ def blocks(history):
         else:
             out.append(history[i:i+1]);i+=1
     return out
+
+
+def elidable(history):
+    """Indices of tool results still big enough to be worth eliding.
+
+    Already-elided results are excluded, which is what stops the reduction loop
+    spinning on a conversation it has nothing left to take from.
+    """
+    return [i for i,item in enumerate(history)
+            if isinstance(item,ToolResult)
+            and len(item.output)>MIN_ELIDABLE_CHARS
+            and ELIDED_STATUS not in item.output]
 
 
 def orphaned(history):
@@ -111,8 +143,35 @@ class ContextBudget:
         return self.chars_per_token
 
     def reducible(self,history):
-        """Whether anything can still be given up; guards against reducing forever."""
-        return len(blocks(history))>1
+        """Whether anything can still be given up; guards against reducing forever.
+
+        A single block still counts when it carries an elidable tool result — that is
+        exactly the one-turn conversation that has no blocks to spare but plenty of
+        bulk to shed.
+        """
+        return len(blocks(history))>1 or bool(elidable(history))
+
+    def elide_largest_result(self,history):
+        """Replace the biggest tool result's body with a stub; return (history, freed).
+
+        The call/result pair survives — only the payload is traded away — so history
+        stays valid for every transport (invariant: pairs are atomic) and the model is
+        told plainly that it may re-read what it lost. One result per call, largest
+        first, so the cheapest possible reduction is taken each time.
+        """
+        targets=elidable(history)
+        if not targets:return list(history),0
+        idx=max(targets,key=lambda i:len(history[i].output))
+        victim=history[idx]
+        stub=json.dumps({'status':ELIDED_STATUS,'tool':victim.name or 'tool',
+                         'original_chars':len(victim.output),
+                         'recovery':'This result was dropped to fit the context window. '
+                                    'Re-run the tool if you still need its content.'})
+        freed=len(victim.output)-len(stub)
+        if freed<=0:return list(history),0
+        out=list(history)
+        out[idx]=ToolResult(call_id=victim.call_id,output=stub,name=victim.name)
+        return out,freed
 
     def drop_oldest(self,history):
         """Fallback reduction: discard the oldest whole block.

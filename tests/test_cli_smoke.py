@@ -19,7 +19,10 @@ def test_cli_slash_commands_smoke(monkeypatch, capsys, tmp_path):
     assert '/continue' in out                       # pause/continue documented in help
     assert 'nothing to continue' in out             # empty-context guard
     assert 'tokens in/out/total' in out             # /usage line
-    assert 'set via CODER_CONTEXT_WINDOW' in out    # /usage context line (regression: NameError)
+    # /usage context line (regression: NameError). It names the window actually in
+    # force and where it came from — never the config default, which the agent may
+    # have already overruled with something the server told it.
+    assert 'no usage reported yet (window 128,000, configured)' in out
 
 
 def test_cli_sessions_and_resume(monkeypatch, capsys, tmp_path):

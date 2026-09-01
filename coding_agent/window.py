@@ -16,8 +16,12 @@ So the window is *learned*, from three sources in descending authority:
 2. **A probe**, for local servers that do report it (vLLM, llama.cpp, Ollama).
 3. **Configuration**, as the starting assumption.
 
-Learned values are cached per (endpoint, model) so the one failed request is not
-repaid every session.
+Both observed sources are cached per (endpoint, model) so neither the failed
+request nor the probe round-trip is repaid every session — but the cache records
+*which* source produced a value, because they do not carry the same authority. A
+cached probe stored as though it were a rejection outranks the operator's own
+`CODER_CONTEXT_WINDOW` forever, which silently defeats the setting; that is the
+bug this provenance exists to prevent.
 """
 from __future__ import annotations
 
@@ -35,15 +39,31 @@ _LIMIT_PATTERNS=[
     re.compile(r"model'?s? max(?:imum)? (?:context|seq(?:uence)? len(?:gth)?)\D{0,20}?(\d+)",re.I),
     re.compile(r"max(?:imum)?_?(?:model_len|seq_len|context_length)\D{0,20}?(\d+)",re.I),
     re.compile(r"reduce the length of the messages.{0,80}?(\d+)\s*tokens",re.I),
-    re.compile(r"context window[^.\d]{0,30}(\d+)\s*tokens",re.I),
+    # llama.cpp: "request (90016 tokens) exceeds the available context size (65536
+    # tokens)". The limit is the *second* number, so anchor on the phrase that
+    # introduces it rather than taking the first match in the sentence.
+    re.compile(r"context (?:size|window|length)[^.\d]{0,30}\(?(\d+)\)?\s*tokens",re.I),
+    re.compile(r"context (?:size|window|length) of\s*(\d+)",re.I),
 ]
 _OVERFLOW_HINTS=('context length','context window','context size','context_length_exceeded',
                  'too many tokens','maximum context','max_model_len','longer than the maximum',
                  'reduce the length','exceeds the maximum','exceeds the available',
-                 'prompt is too long','string too long','input is too long')
+                 'exceed_context_size','prompt is too long','string too long','input is too long')
 
 MIN_PLAUSIBLE_WINDOW=512
 MAX_PLAUSIBLE_WINDOW=20_000_000
+
+# Where a window came from, in descending authority. A rejection is the server
+# stating its own ceiling; a probe is the server describing its configuration;
+# configuration is what the operator assumed. Only the first outranks the operator.
+REJECTION='learned'
+PROBE='probed'
+CONFIGURED='configured'
+_AUTHORITY={REJECTION:2,PROBE:1,CONFIGURED:0}
+
+# Keys llama.cpp and friends put in a structured error body. Reading the number the
+# server actually sent beats pattern-matching the sentence it wrapped around it.
+_LIMIT_FIELDS=('n_ctx','max_model_len','max_context_length','context_length','limit')
 
 
 def plausible(value):
@@ -63,6 +83,23 @@ def looks_like_overflow(text):
     return any(h in low for h in _OVERFLOW_HINTS)
 
 
+def _limit_from_fields(blob):
+    """Read the limit out of a structured error body, or None.
+
+    Servers that reject an oversized request usually also *name* their ceiling in a
+    field (llama.cpp sends `n_ctx`). That number needs no sentence parsing and cannot
+    be confused with the request size, so it is tried before any regex.
+
+    The body reaches us as the string form of an exception, so it is scanned for the
+    field rather than parsed as JSON — the SDK's repr is not valid JSON.
+    """
+    for field in _LIMIT_FIELDS:
+        for m in re.finditer(rf"['\"]{field}['\"]\s*[:=]\s*(\d+)",blob,re.I):
+            found=plausible(int(m.group(1)))
+            if found:return found
+    return None
+
+
 def parse_limit(text):
     """Extract the stated context limit from a rejection, or None.
 
@@ -71,6 +108,8 @@ def parse_limit(text):
     """
     if not text or not looks_like_overflow(text):return None
     blob=str(text)
+    found=_limit_from_fields(blob)
+    if found:return found
     for pattern in _LIMIT_PATTERNS:
         m=pattern.search(blob)
         if m:
@@ -158,7 +197,13 @@ def _probe_ollama(base_url,model,timeout):
 
 
 class WindowStore:
-    """Per-(endpoint, model) cache of learned windows, so a rejection is paid once.
+    """Per-(endpoint, model) cache of observed windows, so neither a rejection nor a
+    probe is paid twice.
+
+    Each entry records the value *and* the source that produced it, because the two
+    observed sources carry different authority (see the module docstring). Entries
+    written by older versions are bare integers; those are read back as rejections,
+    which is what they were — probing did not cache before provenance existed.
 
     Best-effort: an unreadable or unwritable cache degrades to not remembering,
     never to failing a request.
@@ -178,14 +223,28 @@ class WindowStore:
     def key(base_url,model):
         return f'{base_url or "default"}::{model or "unknown"}'
 
-    def get(self,base_url,model):
-        value=self._load().get(self.key(base_url,model))
-        return int(value) if isinstance(value,int) and value>0 else None
+    def entry(self,base_url,model):
+        """Return (tokens, source) for a cached window, or (None, None)."""
+        raw=self._load().get(self.key(base_url,model))
+        if isinstance(raw,int):
+            return (raw,REJECTION) if raw>0 else (None,None)
+        if isinstance(raw,dict):
+            value=plausible(raw.get('tokens'))
+            source=raw.get('source')
+            if value and source in _AUTHORITY:return value,source
+        return None,None
 
-    def remember(self,base_url,model,tokens):
-        if not tokens:return
+    def get(self,base_url,model):
+        """The cached window regardless of provenance; None when nothing is cached."""
+        return self.entry(base_url,model)[0]
+
+    def remember(self,base_url,model,tokens,source=REJECTION):
+        """Cache a window, refusing to let a weaker source overwrite a stronger one."""
+        if not tokens or source not in _AUTHORITY:return
+        _,known=self.entry(base_url,model)
+        if known is not None and _AUTHORITY[source]<_AUTHORITY[known]:return
         try:
-            data=self._load();data[self.key(base_url,model)]=int(tokens)
+            data=self._load();data[self.key(base_url,model)]={'tokens':int(tokens),'source':source}
             self.path.parent.mkdir(parents=True,exist_ok=True)
             tmp=self.path.with_name(self.path.name+'.tmp')
             tmp.write_text(json.dumps(data,indent=2))
@@ -197,15 +256,19 @@ class WindowStore:
 def resolve(config,store=None):
     """Best known window at startup, plus where it came from.
 
-    Order: a previously learned value, then a probe, then configuration. Probing
-    is skipped when the window was set explicitly — that is a stated intention,
-    and only a rejection should override it.
+    Authority, highest first: a rejection (cached or not), then an explicit
+    `CODER_CONTEXT_WINDOW`, then a probe, then the configured default. Setting the
+    window by hand is a stated intention, so it suppresses probing *and* outranks a
+    probe cached by an earlier session — only the server contradicting itself may
+    override it.
     """
-    learned=store.get(config.base_url,config.model) if store else None
-    if learned:return learned,'learned'
-    if not getattr(config,'context_window_explicit',False):
-        found=probe(config.base_url,config.model)
-        if found:
-            if store:store.remember(config.base_url,config.model,found)
-            return found,'probed'
-    return config.context_window_tokens,'configured'
+    cached,source=store.entry(config.base_url,config.model) if store else (None,None)
+    if cached and source==REJECTION:return cached,REJECTION
+    if getattr(config,'context_window_explicit',False):
+        return config.context_window_tokens,CONFIGURED
+    if cached:return cached,source
+    found=probe(config.base_url,config.model)
+    if found:
+        if store:store.remember(config.base_url,config.model,found,PROBE)
+        return found,PROBE
+    return config.context_window_tokens,CONFIGURED

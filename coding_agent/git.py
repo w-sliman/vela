@@ -1,5 +1,13 @@
 import subprocess
 from pathlib import Path
+
+# The agent's own state inside the workspace: session traces, the learned-window
+# cache, persistent memory. Checkpoints must never contain it. A checkpoint is a
+# snapshot of *the user's work*, and `/undo` is `git reset --hard` — so anything
+# swept in here gets rewritten when a checkpoint is undone, silently truncating the
+# very traces `/resume` reads back and destroying the audit trail of the session
+# doing the undoing.
+AGENT_STATE_DIR='.coder-agent'
 class Git:
     def __init__(self,root):self.root=root;self._ready=None
     def run(self,*args):return subprocess.run(['git',*args],cwd=self.root,text=True,capture_output=True)
@@ -10,7 +18,28 @@ class Git:
             if self.run('config','user.email').returncode!=0:
                 self.run('config','user.email','agent@local');self.run('config','user.name','coding-agent')
             self._ready=self.run('rev-parse','--git-dir').returncode==0
+            if self._ready:self._exclude_agent_state()
         return self._ready
+    def _exclude_agent_state(self):
+        """Keep agent state out of the repo, and evict it if an older run committed it.
+
+        The exclude lives in `.git/info/exclude` rather than `.gitignore` so the
+        agent never writes to a tracked file in the user's project. Untracking is a
+        one-time migration for workspaces checkpointed before this existed; it only
+        removes the index entry, never the files themselves.
+        """
+        try:
+            git_dir=self.run('rev-parse','--git-dir').stdout.strip()
+            if git_dir:
+                info=(Path(self.root)/git_dir/'info');info.mkdir(parents=True,exist_ok=True)
+                exclude=info/'exclude';current=exclude.read_text() if exclude.exists() else ''
+                if f'/{AGENT_STATE_DIR}/' not in current:
+                    exclude.write_text(f'{current}{"" if current.endswith(chr(10)) or not current else chr(10)}'
+                                       f'# coding agent state; never part of a checkpoint\n/{AGENT_STATE_DIR}/\n')
+            if self.run('ls-files','--error-unmatch',AGENT_STATE_DIR).returncode==0:
+                self.run('rm','-r','--cached','--quiet',AGENT_STATE_DIR)
+        except OSError:
+            pass
     def snapshot(self,msg):
         """Commit the full workspace state; returns 'committed'|'clean'|None on failure."""
         if not msg or not self.ensure_repo():return None

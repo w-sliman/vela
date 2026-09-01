@@ -108,18 +108,23 @@ review this repository for correctness issues; do not modify files
 - A live status line shows tokens in/out/total plus current context fill after each model turn; `/usage` shows session totals.
 - The context window is worked out rather than assumed: probed from local servers
   that report it (vLLM, llama.cpp, Ollama), otherwise learned from the first
-  oversized-request rejection and cached per endpoint+model. A server's stated limit
-  overrides configuration.
+  oversized-request rejection and cached per endpoint+model with the source it came
+  from. A limit the server states by rejecting a request overrides configuration; a
+  probe does not, so setting `CODER_CONTEXT_WINDOW` by hand still means something.
 - Before every request the outgoing payload is measured against the context budget
-  (that window minus reply headroom) and the conversation is reduced until
-  it fits — summarizing older turns, dropping the oldest only if summarizing fails.
-  Token estimates self-calibrate from any usage the server reports. `CODER_AUTO_COMPACT=0`
-  disables reduction.
+  (that window minus reply headroom) and the conversation is reduced until it fits,
+  by a ladder: summarize older turns (`CODER_COMPACT_KEEP_TURNS`, default 3, are kept
+  verbatim), then elide the largest tool results — keeping every call/result pair
+  intact, so the model is told what it lost and can re-read it — and only then drop
+  the oldest turn. The middle rung is what lets a single huge request survive, where
+  there are no older turns to summarize. Token estimates self-calibrate from any usage
+  the server reports. `CODER_AUTO_COMPACT=0` disables reduction.
 - There is no turn limit: long tasks run as long as they need, bounded by the context
   budget and by Ctrl+C.
-- Failed model requests retry with exponential backoff (`CODER_REQUEST_RETRIES`, default 2) before falling back from the Responses API to Chat Completions.
+- Failed model requests retry with exponential backoff (`CODER_REQUEST_RETRIES`, default 2) before falling back from the Responses API to Chat Completions. Deterministic rejections (a malformed request) are not retried — they are re-raised immediately so the fallback happens while it is still cheap.
 - Subprocesses run with secret-shaped environment variables (API keys, tokens) removed.
-- Each successful edit auto-commits a git checkpoint in the workspace (`CODER_AUTO_CHECKPOINT=0` disables); `/undo` reverts the last one.
+- Each successful edit auto-commits a git checkpoint in the workspace (`CODER_AUTO_CHECKPOINT=0` disables); `/undo` reverts the last one. Checkpoints cover your work only — the agent's own state under `.coder-agent/` is never committed, so undoing an edit cannot rewrite session traces.
+- Edits fail closed: an edit that would newly break a parseable Python file is refused, arguments over the schema's declared limits are refused, and edits that cannot check themselves against the current text (overwriting an existing file, replacing a line range) require the `expected_hash` from `read_file`.
 - Relevant project memories are retrieved lexically once per user request and attached as advisory context; the ids used are shown after each turn (`memory: r2, r7`). Disable with `CODER_MEMORY_INJECT=0`; tune via `CODER_MEMORY_TOPK`, `CODER_MEMORY_MAX_CHARS`, `CODER_MEMORY_MIN_SCORE`. `/compact` also distills durable decisions into memory (`CODER_MEMORY_DISTILL=0` disables). See `docs/MEMORY.md`.
 - Memory stays curated automatically: writes enforce a record cap (`CODER_MEMORY_MAX_RECORDS`, coldest dropped first) and an optional age limit (`CODER_MEMORY_TTL_DAYS`, off by default); `/memory consolidate [focus]` asks the model to group paraphrased duplicates and merges them deterministically.
 - For non-trivial tasks the agent maintains a visible working todo list (`write_todos` tool): announced before work starts, updated live as steps finish, re-injected into every model request so it survives context reduction, and journaled with per-change diffs. Inspect anytime with `/todos`; disable via `CODER_TODOS=0`.

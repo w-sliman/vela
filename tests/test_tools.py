@@ -39,3 +39,30 @@ def test_tool_result_callback_invoked(tmp_path):
                   on_tool_result=lambda name,result:seen.append(name))
     dispatch(c,'make_directory',{'path':'d'})
     assert 'make_directory' in seen
+
+
+# ── the schema's declared limits are a contract, not a hint ──────────────────
+
+def test_oversized_argument_is_refused_with_the_declared_limit(tmp_path):
+    """A model sent 18k characters into a field documented at 8k; the replacement was
+    silently short and mangled the file. The schema now binds."""
+    import json
+    from tests.test_editor import context
+    ctx = context(tmp_path)
+    dispatch(ctx, 'write_file', {'path': 'app.py', 'content': 'x = 1\n'})
+    sha = json.loads(dispatch(ctx, 'read_file', {'path': 'app.py'}))['sha256']
+
+    result = json.loads(dispatch(ctx, 'replace_text',
+                                 {'path': 'app.py', 'old': 'x = 1\n', 'new': 'y' * 9000,
+                                  'expected_hash': sha}))
+
+    assert result['status'] == 'error'
+    assert 'the limit is 8,000' in result['message']
+    assert (tmp_path / 'app.py').read_text() == 'x = 1\n', 'nothing written'
+
+
+def test_arguments_within_the_declared_limit_pass(tmp_path):
+    from tests.test_editor import context
+    ctx = context(tmp_path)
+    assert '"status": "completed"' in dispatch(
+        ctx, 'write_file', {'path': 'ok.py', 'content': '# ' + 'a' * 500 + '\n'})

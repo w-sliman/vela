@@ -5,7 +5,7 @@ from typing import Callable
 from .config import Config
 from .shell import Shell
 from .workspace import Workspace,ConcurrentEditError
-from .editor import patch_or_replace,replace_lines
+from .editor import ensure_no_syntax_regression,patch_or_replace,replace_lines
 from .search import search_text,search_symbols
 from .git import Git
 from .browser import Browser
@@ -50,8 +50,8 @@ def tool_schemas():
  return [
  fn('list_files','List workspace files/directories.',{'path':{'type':'string'},'max_depth':{'type':'integer'}},[]),
  fn('read_file','Read a file. Returns content, a SHA-256 hash for safe editing, and a truncated flag when the file exceeded the read limit.',{'path':{'type':'string'}},['path']),
- fn('write_file','Create/replace a file. Prefer apply_patch or replace_text for edits.',{'path':{'type':'string'},'content':{'type':'string','maxLength':12000},'expected_hash':{'type':'string'}},['path','content']),
- fn('replace_text','Replace text in a file. Two modes: (a) exact old->new text replacement, (b) line range start_line..end_line (1-based, inclusive) replaced verbatim by new. If it fails, the tool returns structured recovery data, often including closest-match lines; re-read and retry.',{'path':{'type':'string'},'old':{'type':'string','maxLength':8000},'new':{'type':'string','maxLength':8000},'occurrence':{'type':'integer'},'expected_hash':{'type':'string'},'fuzzy':{'type':'boolean'},'start_line':{'type':'integer','description':'1-based first line to replace (alternative to old)'},'end_line':{'type':'integer','description':'1-based last line to replace (defaults to start_line)'}},['path','new']),
+ fn('write_file','Create a file, or replace one whole. Prefer apply_patch or replace_text for edits. expected_hash is REQUIRED when the file already exists (read_file gives it); creating a new file needs none.',{'path':{'type':'string'},'content':{'type':'string','maxLength':12000},'expected_hash':{'type':'string'}},['path','content']),
+ fn('replace_text','Replace text in a file. Two modes: (a) exact old->new text replacement, (b) line range start_line..end_line (1-based, inclusive) replaced verbatim by new; end_line defaults to start_line, so a range REPLACES those lines rather than inserting before them, and expected_hash is REQUIRED in this mode. If it fails, the tool returns structured recovery data, often including closest-match lines; re-read and retry.',{'path':{'type':'string'},'old':{'type':'string','maxLength':8000},'new':{'type':'string','maxLength':8000},'occurrence':{'type':'integer'},'expected_hash':{'type':'string'},'fuzzy':{'type':'boolean'},'start_line':{'type':'integer','description':'1-based first line to replace (alternative to old)'},'end_line':{'type':'integer','description':'1-based last line to replace (defaults to start_line)'}},['path','new']),
  fn('apply_patch','Apply a unified diff with context validation and return the resulting diff.',{'path':{'type':'string'},'patch':{'type':'string','maxLength':16000},'expected_hash':{'type':'string'}},['path','patch']),
  fn('make_directory','Create a directory.',{'path':{'type':'string'}},['path']),
  fn('search_text','Regex search across workspace text.',{'query':{'type':'string'},'max_results':{'type':'integer'}},['query']),
@@ -71,11 +71,31 @@ def tool_schemas():
  fn('write_todos','Write the full working todo list, replacing the previous one. Use for non-trivial multi-step tasks: lay out concrete steps before starting, keep exactly one in_progress, mark done immediately with evidence, add discovered work, drop obsolete items.',{'todos':{'type':'array','items':{'type':'object','properties':{'text':{'type':'string','description':'one imperative step'},'status':{'type':'string','enum':['pending','in_progress','done']}},'required':['text','status']}}},['todos']),
  ]
 
-_REQ={}
+_REQ={};_MAXLEN={}
 def _build_req():
- global _REQ
- _REQ={s['name']:tuple(s['parameters'].get('required',())) for s in tool_schemas()}
+ """Index the schemas once: required arguments, and declared string limits.
+
+ The schemas are the single source of truth for the tool contract, but a model
+ treats `maxLength` as a hint — one silently sent 18k characters into a field
+ documented at 8k, and the oversized replacement mangled the file. Indexing the
+ limits here lets the dispatcher hold the model to what the schema advertises.
+ """
+ global _REQ,_MAXLEN
+ schemas=tool_schemas()
+ _REQ={s['name']:tuple(s['parameters'].get('required',())) for s in schemas}
+ _MAXLEN={s['name']:{k:v['maxLength'] for k,v in s['parameters'].get('properties',{}).items()
+                     if isinstance(v,dict) and isinstance(v.get('maxLength'),int)}
+          for s in schemas}
 _build_req()
+
+def _enforce_limits(name,a):
+ """Reject arguments longer than the schema advertises, before anything is written."""
+ for key,cap in _MAXLEN.get(name,{}).items():
+  value=a.get(key)
+  if isinstance(value,str) and len(value)>cap:
+   raise ValueError(f'{name}.{key} is {len(value):,} characters; the limit is {cap:,}. '
+    'Split this into smaller edits targeting the specific regions you are changing '
+    '— an oversized replacement is where content gets silently dropped.')
 
 def _approve_edit(ctx,label,old,new,path):
  """Optional consent gate for file edits (CODER_APPROVAL_EDITS=1): show the
@@ -94,6 +114,7 @@ def _dispatch_impl(ctx,name,a):
  try:
   missing=[k for k in _REQ.get(name,()) if k not in a]
   if missing:raise ValueError(f'missing required argument(s): {", ".join(missing)}')
+  _enforce_limits(name,a)
   if name=='list_files':
    entries,truncated=ctx.workspace.list_files_bounded(a.get('path','.'),int(a.get('max_depth',3)))
    out={'path':a.get('path','.'),'entries':entries,'truncated':truncated}
@@ -106,12 +127,17 @@ def _dispatch_impl(ctx,name,a):
      'Do not rewrite this file with write_file — edit it with replace_text (start_line/end_line) or apply_patch.')
    return json.dumps(out,indent=2)
   if name=='write_file':
-   old='';
+   old='';existed=True
    try:old=ctx.workspace.read_raw(a['path'])
-   except FileNotFoundError:pass
+   except FileNotFoundError:existed=False
    # Validate first: approving a diff that then fails on a stale hash wastes the
    # user's decision and reads as a bug.
+   if existed and not a.get('expected_hash'):
+    raise ConcurrentEditError('overwriting an existing file requires expected_hash; re-read '
+     f'{a["path"]} and pass its sha256. Without it this write cannot tell whether the file '
+     'changed since you read it, and would silently discard any edit made in the meantime.')
    ctx.workspace.preflight_write(a['path'],a['content'],a.get('expected_hash'))
+   ensure_no_syntax_regression(a['path'],old,a['content'])
    if not _approve_edit(ctx,f'edit {a["path"]}',old,a['content'],a['path']):return json.dumps({'status':'denied','reason':'user declined this edit'},indent=2)
    result=ctx.workspace.write_file(a['path'],a['content'],a.get('expected_hash'))
    cp=_checkpoint(ctx,f'auto: write_file {a["path"]}')
@@ -121,9 +147,15 @@ def _dispatch_impl(ctx,name,a):
    if name=='replace_text' and bool(a.get('fuzzy')) and not expected:raise ConcurrentEditError('fuzzy replacement requires expected_hash; re-read the file and pass its sha256')
    if expected and ctx.workspace.hash_file(path)!=expected:raise ConcurrentEditError('file changed since last read; re-read the file and retry')
    if name=='replace_text' and a.get('start_line') is not None:
+    # A line range is positional: nothing in it is checked against the text being
+    # replaced, so the hash is the only thing standing between a mis-counted range
+    # and a silently mangled file.
+    if not expected:raise ConcurrentEditError('replacing a line range requires expected_hash; '
+     f're-read {path} and pass its sha256 along with the line numbers you saw.')
     updated=replace_lines(original,int(a['start_line']),int(a.get('end_line') or a['start_line']),a['new'])
    else:
     updated=patch_or_replace(original,path,a.get('patch'),a.get('old'),a.get('new'),int(a.get('occurrence',1)),bool(a.get('fuzzy',False)))
+   ensure_no_syntax_regression(path,original,updated)
    if not _approve_edit(ctx,f'edit {path}',original,updated,path):return json.dumps({'status':'denied','reason':'user declined this edit'},indent=2)
    ctx.workspace.write_file(path,updated,expected)
    cp=_checkpoint(ctx,f'auto: {name} {path}')
