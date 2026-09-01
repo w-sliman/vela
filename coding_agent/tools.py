@@ -21,7 +21,7 @@ _TODO_STATUSES=('pending','in_progress','done')
 def normalize_todos(raw):
     """Validate a full todo-list replacement: <=12 items, one imperative line each,
     known statuses (unknown -> pending), exact duplicates dropped, junk skipped."""
-    out=[];seen=set()
+    out:list[dict]=[];seen:set[str]=set()
     if not isinstance(raw,list):return out
     for item in raw[:24]:
         if isinstance(item,str):item={'text':item}
@@ -71,7 +71,7 @@ def tool_schemas():
  fn('write_todos','Write the full working todo list, replacing the previous one. Use for non-trivial multi-step tasks: lay out concrete steps before starting, keep exactly one in_progress, mark done immediately with evidence, add discovered work, drop obsolete items.',{'todos':{'type':'array','items':{'type':'object','properties':{'text':{'type':'string','description':'one imperative step'},'status':{'type':'string','enum':['pending','in_progress','done']}},'required':['text','status']}}},['todos']),
  ]
 
-_REQ={};_MAXLEN={}
+_REQ:dict[str,tuple[str,...]]={};_MAXLEN:dict[str,dict[str,int]]={}
 def _build_req():
  """Index the schemas once: required arguments, and declared string limits.
 
@@ -199,8 +199,8 @@ def _dispatch_impl(ctx,name,a):
    if not ctx.delegator: return json.dumps({'status':'error','message':'delegation unavailable'})
    return ctx.delegator.run(a['role'],a['task'])
   if name=='write_todos':
-   old=list(ctx.todos or []);new=normalize_todos(a.get('todos'));ctx.todos=new
-   return json.dumps({'status':'completed','todos':new,'diff':diff_todos(old,new)},indent=2)
+   previous=list(ctx.todos or []);new=normalize_todos(a.get('todos'));ctx.todos=new
+   return json.dumps({'status':'completed','todos':new,'diff':diff_todos(previous,new)},indent=2)
   raise ValueError(f'unknown tool: {name}')
  except Exception as e:
   payload={'status':'error','error_type':type(e).__name__,'message':str(e)}

@@ -36,3 +36,24 @@ select = ["F", "E9"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.mypy]
+# Single source of truth for both scripts/check.sh and CI, as with ruff above.
+# The source is deliberately dense and largely unannotated, so `disallow_untyped_defs`
+# would be noise rather than signal. `check_untyped_defs` is the flag that pays here:
+# it type-checks the bodies of unannotated functions, which is where the real defects
+# were — a `raise` of a possibly-None variable, an unguarded `Optional` iteration, and
+# one name bound to two different types in a single function.
+python_version = "3.11"
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_unreachable = true
+no_implicit_optional = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+# Optional extra: only imported inside browser_open, which raises a helpful error
+# when it is absent. Installing Playwright just to type-check is not worth it.
+module = ["playwright.*"]
+ignore_missing_imports = true

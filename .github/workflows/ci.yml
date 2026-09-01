@@ -14,7 +14,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install -r requirements.txt pytest ruff
+      - run: pip install -r requirements.txt pytest ruff mypy
       - run: pytest -q
       - run: python smoke/runner.py
       - run: ruff check --select F,E9 coding_agent smoke
+      - run: mypy coding_agent

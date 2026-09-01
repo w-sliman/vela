@@ -36,6 +36,7 @@ class Shell:
             # If the grace period expires the pipe is closed underneath this loop;
             # that is an orderly shutdown, not an error worth surfacing.
             try:
+                assert p.stdout is not None    # stdout=PIPE above guarantees it
                 for line in p.stdout:
                     chunks.append(line)
                     if on_output: on_output(line)

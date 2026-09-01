@@ -11,6 +11,7 @@ normalized usage, and whether text was streamed live.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 from .conversation import AssistantMsg, ToolCall, ToolResult, UserMsg
 from .telemetry import extract_usage
 
@@ -46,7 +47,7 @@ class ChatTransport:
         for item in list(history)+_advisory(advisory):
             if isinstance(item,UserMsg):out.append({'role':'user','content':item.text})
             elif isinstance(item,AssistantMsg):
-                msg={'role':'assistant','content':item.text or ''}
+                msg:dict[str,Any]={'role':'assistant','content':item.text or ''}
                 if item.tool_calls:
                     msg['tool_calls']=[{'id':c.id,'type':'function',
                                         'function':{'name':c.name,'arguments':c.arguments}}
@@ -75,7 +76,7 @@ class StreamingChatTransport(ChatTransport):
     def send_payload(self,payload,schemas,on_token=None):
         stream=self.provider.chat_stream(model=self.model,messages=payload,
                                          tools=self._tools(schemas),tool_choice='auto')
-        parts=[];slots={};usage=None;emitted=False
+        parts:list[str]=[];slots:dict[int,dict[str,str]]={};usage=None;emitted=False
         for chunk in stream:
             cu=getattr(chunk,'usage',None)
             if cu is not None:usage=cu
@@ -131,7 +132,7 @@ class ResponsesTransport:
         r=self.provider.responses(model=self.model,instructions=self.system,
                                   input=payload,tools=schemas)
         items=list(r.output)
-        calls=[ToolCall(id=getattr(x,'call_id',None) or getattr(x,'id',''),name=x.name,
+        calls=[ToolCall(id=str(getattr(x,'call_id',None) or getattr(x,'id','') or ''),name=x.name,
                         arguments=x.arguments)
                for x in items if getattr(x,'type',None)=='function_call']
         return Reply(text=r.output_text or '',tool_calls=calls,

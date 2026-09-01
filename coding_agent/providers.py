@@ -37,7 +37,7 @@ def with_retries(fn,delays,on_wait=None,on_failure=None,retry_on=is_transient):
     `retry_on` decides which failures are worth repeating; a deterministic rejection
     is re-raised immediately so the caller can act on it while it is still cheap.
     """
-    last=None
+    last:Exception|None=None
     for i,delay in enumerate(delays):
         if delay:
             if on_wait:on_wait(delay,i)
@@ -47,6 +47,9 @@ def with_retries(fn,delays,on_wait=None,on_failure=None,retry_on=is_transient):
             last=exc
             if on_failure:on_failure(exc,i)
             if retry_on is not None and not retry_on(exc):raise
+    # Only reachable once every attempt has failed, so `last` is always set; an
+    # empty schedule would mean "never call fn at all", which is a caller bug.
+    if last is None:raise ValueError('with_retries needs at least one attempt in `delays`')
     raise last
 # Per-request timeout so a hung endpoint cannot block the REPL for the
 # OpenAI client's ~10-minute default. For streams this bounds the gap

@@ -28,7 +28,7 @@ def _class_signature(node):
 
 def _regex_symbols(path,rel):
  """Fallback line scan for files that fail to parse."""
- out=[]
+ out:list[dict]=[]
  try:lines=path.read_text(encoding='utf-8').splitlines()
  except (UnicodeDecodeError,OSError):return out
  for n,line in enumerate(lines,1):

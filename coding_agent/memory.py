@@ -1,6 +1,8 @@
 from __future__ import annotations
-import json,math,os,re,datetime
+import json,math,os,re,types,datetime
 from contextlib import contextmanager
+# POSIX-only; the lock degrades to a no-op on platforms without it (see _locked).
+fcntl: types.ModuleType|None
 try:
     import fcntl
 except ImportError:
@@ -30,7 +32,7 @@ def _pathish(values):
     return out
 
 def _idf(records):
-    df={};n=max(1,len(records))
+    df:dict[str,int]={};n=max(1,len(records))
     for r in records:
         for t in set(tokenize(r.get('text','')))|set(tokenize(' '.join(r.get('tags',[])))):df[t]=df.get(t,0)+1
     return {t:math.log(1+n/(1+d)) for t,d in df.items()}
@@ -95,7 +97,7 @@ class ProjectMemory:
         return self._migrate(d) if 'records' not in d else d
     def _migrate(self,old):
         """Legacy buckets {'facts':[{'text','timestamp'},...]} -> versioned record list."""
-        recs=[]
+        recs:list[dict]=[]
         for kind,items in old.items():
             if not isinstance(items,list):continue
             for it in items:

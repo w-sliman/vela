@@ -30,7 +30,7 @@ def extract_usage(usage):
     return d
 
 class Timer:
- def __enter__(self): self.start=time.perf_counter(); self.elapsed_ms=0; return self
+ def __enter__(self): self.start=time.perf_counter(); self.elapsed_ms=0.0; return self
  def __exit__(self,*_): self.elapsed_ms=(time.perf_counter()-self.start)*1000
 class Metrics:
  def __init__(self): self.input_tokens=0; self.output_tokens=0; self.calls=0; self.tool_calls=0; self.latency_ms=0; self.estimated_cost_usd=0.0; self.missing_usage=0; self.last_input_tokens=0

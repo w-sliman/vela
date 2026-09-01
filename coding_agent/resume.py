@@ -12,7 +12,7 @@ def _trunc(s,n):s=str(s).strip();return s[:n]+'…' if len(s)>n else s
 
 def list_sessions(workspace,exclude=None,limit=20):
     """Newest-first index of session traces (id, mtime epoch, user turns, first request)."""
-    d=_sessions_dir(workspace);out=[]
+    d=_sessions_dir(workspace);out:list[dict]=[]
     if not d.exists():return out
     for f in sorted(d.glob('*.jsonl'),key=lambda p:p.stat().st_mtime,reverse=True):
         if exclude is not None and f==exclude:continue

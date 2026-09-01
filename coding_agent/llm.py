@@ -73,7 +73,7 @@ class AgentResult:
 _RE_PATH_ARG=re.compile(r'"path"\s*:\s*"([^"\n]+)"');_RE_PATHS_ARR=re.compile(r'"paths"\s*:\s*\[([^\]]*)\]')
 def _clean_memories(raw):
     """Validate summarizer-proposed memories -> [(kind,text,tags,paths)]; junk entries are dropped."""
-    out=[]
+    out:list[tuple]=[]
     if not isinstance(raw,list):return out
     for m in raw:
         if not isinstance(m,dict):continue
@@ -85,7 +85,7 @@ def _clean_memories(raw):
 
 def _clean_groups(raw,valid_ids):
     """Validate consolidator-proposed merge groups; only known-id groups of 2+ survive."""
-    out=[]
+    out:list[dict]=[]
     if not isinstance(raw,list):return out
     for g in raw:
         if not isinstance(g,dict):continue
@@ -98,7 +98,7 @@ def _clean_groups(raw,valid_ids):
     return out
 def _recent_paths(history,limit=16):
     """Workspace paths touched by recent tool calls, harvested from tool arguments."""
-    out=[]
+    out:list[str]=[]
     for blob in tool_arguments(history[-limit:]):
         out.extend(m.group(1) for m in _RE_PATH_ARG.finditer(blob))
         for m in _RE_PATHS_ARR.finditer(blob):out+=re.findall(r'"([^"\n]+)"',m.group(1))

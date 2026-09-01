@@ -55,7 +55,9 @@ def payload_chars(payload):
 
 
 def _encode(obj):
-    return asdict(obj) if is_dataclass(obj) else str(obj)
+    # is_dataclass() is true for the class object too, which asdict rejects; only an
+    # instance can be flattened, and anything else is rendered for measurement only.
+    return asdict(obj) if is_dataclass(obj) and not isinstance(obj,type) else str(obj)
 
 
 def blocks(history):
@@ -90,7 +92,7 @@ def elidable(history):
 
 def orphaned(history):
     """True when a tool result lost the call it answers — always a bug."""
-    seen=set()
+    seen:set[str]=set()
     for item in history:
         if is_call(item):seen.update(c.id for c in item.tool_calls)
         elif isinstance(item,ToolResult) and item.call_id not in seen:return True
