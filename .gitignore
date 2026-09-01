@@ -4,13 +4,10 @@ __pycache__/
 .env
 *.pyc
 .coder-agent/sessions/
-# The demo workspace ships three seed files and nothing else. Everything the agent
-# creates while running against it — edits, its checkpoint repo, session traces — is
-# scratch, so allow-list the fixture rather than chasing new artefacts.
-workspace/*
-!workspace/README.md
-!workspace/hello.py
-!workspace/test_hello.py
+# The agent's scratch workspace: whatever it is pointed at is the user's own work
+# or throwaway demo material, never part of this project. The directory is created
+# on first run, so nothing here needs to ship.
+workspace/
 .mypy_cache/
 .ruff_cache/
 *.egg-info/
