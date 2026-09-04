@@ -1,5 +1,5 @@
 from __future__ import annotations
-import os, re, shutil, signal, subprocess, sys, threading
+import atexit, os, re, shutil, signal, subprocess, sys, threading
 import pathlib
 from dataclasses import dataclass
 from .policy import Decision, classify_command
@@ -15,6 +15,41 @@ def _kill_tree(p):
 # inherited stdout and holds the pipe open; 0.2s was short enough to truncate the
 # tail of a normal chatty command, which the model then reasoned from.
 _DRAIN_GRACE=5.0
+# Children are started in their own session so a timeout can kill the whole
+# process group. The cost is that they no longer die with us: nothing signals a
+# detached session when Vela is terminated, so a command still running when we
+# exit would keep running invisibly, holding its workspace and its resources
+# after the agent that started it is gone. Every live child is tracked and
+# reaped on the way out.
+_LIVE: set[subprocess.Popen] = set()
+_LIVE_LOCK=threading.Lock()
+def _reap_live():
+    """Kill every command still running. Registered for exit and termination."""
+    with _LIVE_LOCK: procs=list(_LIVE); _LIVE.clear()
+    for p in procs:
+        if p.poll() is None: _kill_tree(p)
+def _terminating_handler(signum,frame):
+    """Reap children, then die of the original signal so our exit status is honest."""
+    _reap_live()
+    signal.signal(signum,signal.SIG_DFL)
+    os.kill(os.getpid(),signum)
+def _install_reaper():
+    """Reap on normal exit and on the signals a supervisor actually sends.
+
+    SIGKILL cannot be caught, so a `kill -9` still orphans; SIGTERM (what
+    `timeout` and most supervisors send) and SIGHUP (a closed terminal) are the
+    cases worth covering. An existing handler is left alone -- an embedding
+    application owns its own signals.
+    """
+    atexit.register(_reap_live)
+    for name in ('SIGTERM','SIGHUP'):
+        sig=getattr(signal,name,None)
+        if sig is None: continue
+        try:
+            if signal.getsignal(sig) is signal.SIG_DFL:
+                signal.signal(sig,_terminating_handler)
+        except (ValueError,OSError):pass   # not the main thread, or unsupported
+_install_reaper()
 _SECRET_KEY_RE=re.compile(r'(API_?KEY|TOKEN|SECRET|PASSWORD)',re.I)
 # Vela runs from a venv, but children are spawned through a shell that only sees
 # the ambient PATH. Without this, `python -m pytest` -- the command our own docs
@@ -71,13 +106,17 @@ class Shell:
                     if on_output: on_output(line)
             except (ValueError,OSError):pass
         t=threading.Thread(target=drain,daemon=True);t.start()
-        try: p.wait(timeout=timeout or self.config.command_timeout)
-        except subprocess.TimeoutExpired:
-            _kill_tree(p); out=self._drain(p,t,chunks)
-            return ShellResult(command,124,out[:self.config.max_tool_output]+'\ncommand timed out','',d)
-        out=self._drain(p,t,chunks)
-        rc=0 if p.returncode==_SIGPIPE_RC else p.returncode
-        return ShellResult(command,rc,out[:self.config.max_tool_output],'',d)
+        with _LIVE_LOCK: _LIVE.add(p)
+        try:
+            try: p.wait(timeout=timeout or self.config.command_timeout)
+            except subprocess.TimeoutExpired:
+                _kill_tree(p); out=self._drain(p,t,chunks)
+                return ShellResult(command,124,out[:self.config.max_tool_output]+'\ncommand timed out','',d)
+            out=self._drain(p,t,chunks)
+            rc=0 if p.returncode==_SIGPIPE_RC else p.returncode
+            return ShellResult(command,rc,out[:self.config.max_tool_output],'',d)
+        finally:
+            with _LIVE_LOCK: _LIVE.discard(p)
     @staticmethod
     def _drain(p,thread,chunks):
         """Collect whatever the reader thread has left once the process has exited."""
