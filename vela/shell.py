@@ -18,19 +18,22 @@ _DRAIN_GRACE=5.0
 _SECRET_KEY_RE=re.compile(r'(API_?KEY|TOKEN|SECRET|PASSWORD)',re.I)
 # Vela runs from a venv, but children are spawned through a shell that only sees
 # the ambient PATH. Without this, `python -m pytest` -- the command our own docs
-# tell the agent to run -- resolves to whatever interpreter happens to be first,
-# or to nothing at all, and the agent burns turns hunting for one.
+# tell the agent to run -- can resolve to nothing at all, and the agent burns
+# turns hunting for an interpreter. It is appended rather than prepended: a
+# workspace with its own virtualenv on PATH must keep winning, because the
+# project's environment, not ours, is the one its tests need.
 _INTERPRETER_BIN=str(pathlib.Path(sys.executable).parent)
 def child_env():
     """Environment for child processes with secret-shaped variables removed.
 
-    The interpreter running Vela is prepended to PATH so that a bare `python`
-    in a child command means the venv Vela itself was launched from.
+    The interpreter running Vela is appended to PATH as a fallback, so a bare
+    `python` resolves even when nothing else provides one, without displacing an
+    interpreter the workspace itself puts ahead of it.
     """
     env={k:v for k,v in os.environ.items() if not _SECRET_KEY_RE.search(k)}
     path=env.get('PATH','')
     if _INTERPRETER_BIN not in path.split(os.pathsep):
-        env['PATH']=_INTERPRETER_BIN+(os.pathsep+path if path else '')
+        env['PATH']=(path+os.pathsep if path else '')+_INTERPRETER_BIN
     return env
 # A pipeline reports only its last stage, so `pytest | head` -- which is what a
 # model writes to bound output -- exits 0 even when the suite failed, and the

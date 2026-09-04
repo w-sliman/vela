@@ -1,4 +1,5 @@
 """A failing check must not be hidden by the pipe the model wrote to bound output."""
+import os
 import sys
 
 import pytest
@@ -45,9 +46,22 @@ def test_exit_status_is_still_faithful(tmp_path):
     assert shell.run('true', approved=True).returncode == 0
 
 
-def test_child_python_is_the_interpreter_vela_runs(tmp_path):
-    """A bare `python` in a command must mean the venv Vela was launched from."""
+def test_child_python_falls_back_to_the_interpreter_vela_runs(monkeypatch, tmp_path):
+    """With nothing else providing `python`, a bare `python` must still resolve."""
+    monkeypatch.setenv('PATH', '/nonexistent-for-this-test')
     result = Shell(config(tmp_path)).run(
         'python -c "import sys; print(sys.executable)"', approved=True)
     assert result.returncode == 0
     assert result.stdout.strip() == sys.executable
+
+
+def test_workspace_interpreter_still_wins(monkeypatch, tmp_path):
+    """A venv the workspace puts on PATH must not be displaced by ours."""
+    fake = tmp_path / 'bin'
+    fake.mkdir()
+    shim = fake / 'python'
+    shim.write_text('#!/bin/sh\necho SHIM\n')
+    shim.chmod(0o755)
+    monkeypatch.setenv('PATH', str(fake) + os.pathsep + os.environ.get('PATH', ''))
+    result = Shell(config(tmp_path)).run('python -c "irrelevant"', approved=True)
+    assert result.stdout.strip() == 'SHIM' 
