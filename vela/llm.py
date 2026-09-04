@@ -35,6 +35,23 @@ class PauseInterrupt(Exception):
 _EDIT_TOOLS=frozenset({'write_file','replace_text','apply_patch'})
 _VERIFY_HINTS=('pytest','test','tests','mypy','ruff','flake8','unittest','tox','compileall')
 _QUOTED_ARG_RE=re.compile(r'"[^"]*"|\'[^\']*\'')
+_ARG_PREVIEW_KEYS=('command','path','pattern','url','name')
+_ARG_PREVIEW_MAX=160
+def _call_preview(name,args):
+    """One-line echo of the argument that identifies a tool call.
+
+    run_command is the tool where this matters most: without it the terminal
+    shows a shell tool running and never says what it ran. The session trace
+    always held the full arguments; this is the live view catching up.
+    """
+    if not isinstance(args,dict): return name
+    for key in _ARG_PREVIEW_KEYS:
+        value=args.get(key)
+        if isinstance(value,str) and value.strip():
+            shown=' '.join(value.split())
+            if len(shown)>_ARG_PREVIEW_MAX: shown=shown[:_ARG_PREVIEW_MAX-1]+'\u2026'
+            return f'{name} {shown}'
+    return name
 def _is_check_command(command):
     """True when the command looks like a test/check invocation.
 
@@ -506,7 +523,7 @@ class CodingAgent:
         for call in reply.tool_calls:
             self.metrics.tool_calls+=1
             args,err,repaired=parse_tool_arguments(call.arguments)
-            self.events.emit('info',f'tool arguments: {call.name}',repaired=repaired)
+            self.events.emit('info',f'tool arguments: {_call_preview(call.name,args)}',repaired=repaired)
             result=(json.dumps({'status':'tool_argument_error','error':err,
                                 'recovery':'Re-read the file and retry with a smaller patch; do not repeat stale text.'})
                     if err else self._dispatch(call.name,args))

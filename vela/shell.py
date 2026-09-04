@@ -1,5 +1,6 @@
 from __future__ import annotations
-import os, re, signal, subprocess, threading
+import os, re, shutil, signal, subprocess, sys, threading
+import pathlib
 from dataclasses import dataclass
 from .policy import Decision, classify_command
 @dataclass(frozen=True)
@@ -15,9 +16,33 @@ def _kill_tree(p):
 # tail of a normal chatty command, which the model then reasoned from.
 _DRAIN_GRACE=5.0
 _SECRET_KEY_RE=re.compile(r'(API_?KEY|TOKEN|SECRET|PASSWORD)',re.I)
+# Vela runs from a venv, but children are spawned through a shell that only sees
+# the ambient PATH. Without this, `python -m pytest` -- the command our own docs
+# tell the agent to run -- resolves to whatever interpreter happens to be first,
+# or to nothing at all, and the agent burns turns hunting for one.
+_INTERPRETER_BIN=str(pathlib.Path(sys.executable).parent)
 def child_env():
-    """Environment for child processes with secret-shaped variables removed."""
-    return {k:v for k,v in os.environ.items() if not _SECRET_KEY_RE.search(k)}
+    """Environment for child processes with secret-shaped variables removed.
+
+    The interpreter running Vela is prepended to PATH so that a bare `python`
+    in a child command means the venv Vela itself was launched from.
+    """
+    env={k:v for k,v in os.environ.items() if not _SECRET_KEY_RE.search(k)}
+    path=env.get('PATH','')
+    if _INTERPRETER_BIN not in path.split(os.pathsep):
+        env['PATH']=_INTERPRETER_BIN+(os.pathsep+path if path else '')
+    return env
+# A pipeline reports only its last stage, so `pytest | head` -- which is what a
+# model writes to bound output -- exits 0 even when the suite failed, and the
+# verify gate accepts it as a passing check. pipefail makes the pipeline carry
+# the failure. dash has no pipefail, so this needs a real bash.
+_BASH=shutil.which('bash')
+_PIPEFAIL_PREFIX='set -o pipefail\n'
+# With pipefail on, a downstream stage exiting early (`... | head -n 100`) makes
+# the producer die of SIGPIPE and the whole pipeline report 141. That is orderly
+# truncation, not a failed check, so it is reported as success -- 141 can only
+# arise this way, since a real non-zero exit from any stage outranks it.
+_SIGPIPE_RC=141
 class Shell:
     """Run commands with stderr merged into stdout (single stream).
 
@@ -30,7 +55,8 @@ class Shell:
         d=self.classify(command)
         if d.action=='deny': raise PermissionError(d.reason)
         if d.action=='approve' and not approved: raise PermissionError(f'approval required: {d.reason}')
-        p=subprocess.Popen(command,shell=True,cwd=self.config.workspace,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,env=child_env(),bufsize=1,start_new_session=True)
+        script=(_PIPEFAIL_PREFIX+command) if _BASH else command
+        p=subprocess.Popen(script,shell=True,executable=_BASH,cwd=self.config.workspace,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,env=child_env(),bufsize=1,start_new_session=True)
         chunks=[]
         def drain():
             # If the grace period expires the pipe is closed underneath this loop;
@@ -47,7 +73,8 @@ class Shell:
             _kill_tree(p); out=self._drain(p,t,chunks)
             return ShellResult(command,124,out[:self.config.max_tool_output]+'\ncommand timed out','',d)
         out=self._drain(p,t,chunks)
-        return ShellResult(command,p.returncode,out[:self.config.max_tool_output],'',d)
+        rc=0 if p.returncode==_SIGPIPE_RC else p.returncode
+        return ShellResult(command,rc,out[:self.config.max_tool_output],'',d)
     @staticmethod
     def _drain(p,thread,chunks):
         """Collect whatever the reader thread has left once the process has exited."""

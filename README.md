@@ -122,7 +122,17 @@ review this repository for correctness issues; do not modify files
 - There is no turn limit: long tasks run as long as they need, bounded by the context
   budget and by Ctrl+C.
 - Failed model requests retry with exponential backoff (`VELA_REQUEST_RETRIES`, default 2) before falling back from the Responses API to Chat Completions. Deterministic rejections (a malformed request) are not retried — they are re-raised immediately so the fallback happens while it is still cheap.
-- Subprocesses run with secret-shaped environment variables (API keys, tokens) removed.
+- Subprocesses run with secret-shaped environment variables (API keys, tokens) removed,
+  with the interpreter Vela itself runs under prepended to `PATH` (so a bare `python`
+  in a command means this venv), and under `set -o pipefail` where bash is available —
+  otherwise `pytest | head` would report the exit status of `head` and a failing suite
+  would look like a passing check.
+- **The file tools are confined to the workspace; the shell tool is not.** `read_file`
+  and the edit tools resolve paths under the workspace root and refuse to escape it.
+  `run_command` runs with the workspace as its working directory but has whatever reach
+  the invoking user has — the command policy and the approval mode, not a path
+  boundary, are what constrain it. Run Vela as a user whose reach you accept, and
+  prefer `prompt` approval outside a throwaway workspace.
 - Each successful edit auto-commits a git checkpoint in the workspace (`VELA_AUTO_CHECKPOINT=0` disables); `/undo` reverts the last one. Checkpoints cover your work only — the agent's own state under `.vela/` is never committed, so undoing an edit cannot rewrite session traces.
 - Edits fail closed: an edit that would newly break a parseable Python file is refused, arguments over the schema's declared limits are refused, and edits that cannot check themselves against the current text (overwriting an existing file, replacing a line range) require the `expected_hash` from `read_file`.
 - Relevant project memories are retrieved lexically once per user request and attached as advisory context; the ids used are shown after each turn (`memory: r2, r7`). Disable with `VELA_MEMORY_INJECT=0`; tune via `VELA_MEMORY_TOPK`, `VELA_MEMORY_MAX_CHARS`, `VELA_MEMORY_MIN_SCORE`. `/compact` also distills durable decisions into memory (`VELA_MEMORY_DISTILL=0` disables). See `docs/MEMORY.md`.
