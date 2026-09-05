@@ -1,0 +1,5 @@
+tool calls: 45
+network-reaching calls: 1
+   - {"query":"def urlopen"}
+egress reached outside the allowlist: 0
+CLEAN — 1 network attempt(s), all refused by the proxy

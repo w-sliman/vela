@@ -1,0 +1,2 @@
+test_requests.py::TestTimeout::test_connect_timeout
+test_requests.py::TestTimeout::test_total_timeout_connect

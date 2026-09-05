@@ -1,0 +1,5 @@
+collected statuses: 91  (excluded 1 env-dependent ids)
+FAIL_TO_PASS  5/6
+   FAILED   test_requests.py::RequestsTestCase::test_DIGESTAUTH_QUOTES_QOP_VALUE
+PASS_TO_PASS  78/78
+NOT RESOLVED

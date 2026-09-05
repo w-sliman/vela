@@ -1,0 +1,6 @@
+0e1f333d auto: replace_text requests/adapters.py
+e1ca0936 auto: replace_text requests/adapters.py
+d3de6bf2 auto: replace_text requests/models.py
+4ef587f0 auto: replace_text requests/adapters.py
+a6b52d6f auto: replace_text requests/adapters.py
+cf15822b auto: replace_text requests/models.py

@@ -1,0 +1,5 @@
+collected statuses: 290  (excluded 4 env-dependent ids)
+FAIL_TO_PASS  0/1
+   FAILED   tests/test_requests.py::TestRequests::test_invalid_url[InvalidURL-http://.example.com]
+PASS_TO_PASS  126/126
+NOT RESOLVED

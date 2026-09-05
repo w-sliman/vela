@@ -1,0 +1,149 @@
+egress allowlist: [('opencode.ai', 443)]
+REFUSED raw.githubusercontent.com:443
+REFUSED raw.githubusercontent.com:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+REFUSED non-CONNECT: GET http://docs.python.org/3/whatsnew/3.8.html HTTP/1.1
+REFUSED non-CONNECT: GET https://docs.python.org/3/whatsnew/3.8.html HTTP/1.1
+REFUSED docs.python.org:443
+REFUSED docs.python.org:443
+REFUSED non-CONNECT: GET http://docs.python.org/3/whatsnew/3.8.html HTTP/1.1
+REFUSED non-CONNECT: GET http://raw.githubusercontent.com/python/cpython/v3.8.12/Doc/whatsnew/changelog.rst HTTP/1.1
+REFUSED non-CONNECT: GET http://raw.githubusercontent.com/python/cpython/3.8/Doc/whatsnew/3.8.rst HTTP/1.1
+REFUSED non-CONNECT: GET http://example.com/ HTTP/1.1
+REFUSED non-CONNECT: GET http://example.com/ HTTP/1.1
+REFUSED non-CONNECT: GET http://docs.python.org/3/whatsnew/3.8.html HTTP/1.1
+REFUSED pypi.org:443
+REFUSED raw.githubusercontent.com:443
+REFUSED github.com:443
+REFUSED non-CONNECT: GET http://httpbin.org/get HTTP/1.1
+REFUSED non-CONNECT: GET http://example.org/ HTTP/1.1
+REFUSED non-CONNECT: GET http://httpbin.org/get HTTP/1.1
+REFUSED non-CONNECT: GET http://example.com/ HTTP/1.1
+REFUSED non-CONNECT: GET http://pypi.org/ HTTP/1.1
+REFUSED docs.python.org:443
+REFUSED non-CONNECT: GET http://example.com/ HTTP/1.1
+REFUSED non-CONNECT: GET http://example.com/ HTTP/1.1
+REFUSED non-CONNECT: GET http://example.com:80/ HTTP/1.1
+REFUSED non-CONNECT: GET https://example.com:443/ HTTP/1.1
+REFUSED non-CONNECT: HEAD http://example.com/ HTTP/1.1
+REFUSED non-CONNECT: HEAD http://example.com:80/ HTTP/1.1
+REFUSED non-CONNECT: HEAD https://example.com:443/ HTTP/1.1
+REFUSED non-CONNECT: OPTIONS http://example.com/ HTTP/1.1
+REFUSED non-CONNECT: OPTIONS http://example.com:80/ HTTP/1.1
+REFUSED non-CONNECT: OPTIONS https://example.com:443/ HTTP/1.1
+REFUSED example.com:80
+REFUSED example.com:80
+REFUSED example.com:80
+REFUSED non-CONNECT: POST http://example.com/ HTTP/1.1
+REFUSED non-CONNECT: POST http://example.com:80/ HTTP/1.1
+REFUSED non-CONNECT: POST https://example.com:443/ HTTP/1.1
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+REFUSED api.github.com:443
+REFUSED raw.githubusercontent.com:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+REFUSED api.openai.com:443
+REFUSED openai.com:443
+REFUSED example.com:443
+REFUSED httpbin.org:443
+REFUSED docs.python.org:443
+REFUSED raw.githubusercontent.com:443
+REFUSED pypi.org:443
+REFUSED github.com:443
+REFUSED cdn.jsdelivr.net:443
+REFUSED unpkg.com:443
+REFUSED cdnjs.cloudflare.com:443
+REFUSED www.python.org:443
+REFUSED www.google.com:443
+REFUSED duckduckgo.com:443
+REFUSED en.wikipedia.org:443
+REFUSED non-CONNECT: GET http://opencode.ai/ HTTP/1.1
+REFUSED non-CONNECT: GET http://example.com/ HTTP/1.1
+REFUSED non-CONNECT: GET http://www.python.org/ HTTP/1.1
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+REFUSED docs.python.org:443
+REFUSED docs.python.org:443
+REFUSED raw.githubusercontent.com:443
+REFUSED non-CONNECT: GET http://docs.python.org/3/whatsnew/3.8.html HTTP/1.1
+REFUSED non-CONNECT: GET http://raw.githubusercontent.com/python/cpython/v3.8.12/README.rst HTTP/1.1
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443

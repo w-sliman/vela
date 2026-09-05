@@ -1,0 +1,2 @@
+test_requests.py::RequestsTestCase::test_mixed_case_scheme_acceptable
+test_requests.py::RequestsTestCase::test_pyopenssl_redirect

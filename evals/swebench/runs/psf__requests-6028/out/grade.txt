@@ -1,0 +1,4 @@
+collected statuses: 205  (excluded 3 env-dependent ids)
+FAIL_TO_PASS  2/2
+PASS_TO_PASS  182/182
+RESOLVED

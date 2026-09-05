@@ -1,0 +1,5 @@
+collected statuses: 119  (excluded 2 env-dependent ids)
+FAIL_TO_PASS  5/6
+   FAILED   test_requests.py::RequestsTestCase::test_headers_on_session_with_None_are_not_sent
+PASS_TO_PASS  105/105
+NOT RESOLVED

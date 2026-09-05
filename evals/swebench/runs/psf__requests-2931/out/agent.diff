@@ -1,0 +1,34 @@
+diff --git a/requests/models.py b/requests/models.py
+index 9c624d3..f5d4815 100644
+--- a/requests/models.py
++++ b/requests/models.py
+@@ -81,7 +81,13 @@ class RequestEncodingMixin(object):
+         """
+ 
+         if isinstance(data, (str, bytes)):
+-            return to_native_string(data)
++            if isinstance(data, str):
++                return to_native_string(data)
++            else:
++                try:
++                    return to_native_string(data)
++                except UnicodeDecodeError:
++                    return data
+         elif hasattr(data, 'read'):
+             return data
+         elif hasattr(data, '__iter__'):
+@@ -387,6 +393,14 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
+ 
+         enc_params = self._encode_params(params)
+         if enc_params:
++            if isinstance(enc_params, bytes):
++                # _encode_params may return bytes when the supplied params
++                # contain non-ASCII bytes (binary bodies fall back to bytes).
++                # Query strings must be native strings, so decode if needed.
++                try:
++                    enc_params = enc_params.decode('utf-8')
++                except UnicodeDecodeError:
++                    enc_params = enc_params.decode('utf-8', errors='replace')
+             if query:
+                 query = '%s&%s' % (query, enc_params)
+             else:

@@ -1,0 +1,4 @@
+collected statuses: 27
+FAIL_TO_PASS  1/1
+PASS_TO_PASS  5/5
+RESOLVED

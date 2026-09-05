@@ -1,0 +1,7 @@
+/inst/test_patch.diff:8: trailing whitespace.
+    
+warning: 1 line adds whitespace errors.
+collected statuses: 88  (excluded 1 env-dependent ids)
+FAIL_TO_PASS  6/6
+PASS_TO_PASS  78/78
+RESOLVED

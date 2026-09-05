@@ -1,0 +1,4 @@
+tests/test_requests.py::TestTimeout::test_connect_timeout[timeout0]
+tests/test_requests.py::TestTimeout::test_connect_timeout[timeout1]
+tests/test_requests.py::TestTimeout::test_total_timeout_connect[timeout0]
+tests/test_requests.py::TestTimeout::test_total_timeout_connect[timeout1]

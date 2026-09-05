@@ -1,0 +1,303 @@
+egress allowlist: [('opencode.ai', 443)]
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+REFUSED docs.python.org:443
+REFUSED raw.githubusercontent.com:443
+REFUSED non-CONNECT: GET http://docs.python.org/3/whatsnew/3.8.html HTTP/1.1
+REFUSED docs.python.org:443
+REFUSED docs.python.org:443
+REFUSED docs.python.org:443
+REFUSED docs.python.org:443
+REFUSED non-CONNECT: GET http://example.org/ HTTP/1.1
+REFUSED non-CONNECT: GET http://docs.python.org/3/whatsnew/3.8.html HTTP/1.1
+REFUSED non-CONNECT: GET http://httpbin.org/get HTTP/1.1
+REFUSED non-CONNECT: GET http://example.org/ HTTP/1.1
+REFUSED non-CONNECT: GET http://docs.python.org/3/whatsnew/3.8.html HTTP/1.1
+REFUSED docs.python.org:443
+REFUSED non-CONNECT: GET http://raw.githubusercontent.com/ HTTP/1.1
+REFUSED raw.githubusercontent.com:443
+REFUSED non-CONNECT: GET http://github.com/ HTTP/1.1
+REFUSED github.com:443
+REFUSED non-CONNECT: GET http://docs.python.org/ HTTP/1.1
+REFUSED docs.python.org:443
+REFUSED non-CONNECT: GET http://example.org/ HTTP/1.1
+REFUSED example.org:443
+REFUSED non-CONNECT: GET http://httpbin.org/ HTTP/1.1
+REFUSED httpbin.org:443
+REFUSED non-CONNECT: GET http://pypi.org/ HTTP/1.1
+REFUSED pypi.org:443
+REFUSED non-CONNECT: GET http://google.com/ HTTP/1.1
+REFUSED google.com:443
+REFUSED non-CONNECT: GET http://python.org/ HTTP/1.1
+REFUSED python.org:443
+REFUSED non-CONNECT: GET http://example.org/ HTTP/1.1
+REFUSED api.github.com:443
+ALLOWED opencode.ai:443
+REFUSED non-CONNECT: GET http://docs.python.org/3/whatsnew/3.8.html HTTP/1.1
+REFUSED non-CONNECT: GET http://example.org/ HTTP/1.1
+REFUSED non-CONNECT: GET http://example.org/ HTTP/1.1
+REFUSED non-CONNECT: GET http://example.org/ HTTP/1.1
+REFUSED github.com:443
+REFUSED github.com:443
+REFUSED non-CONNECT: GET http://raw.githubusercontent.com/python/cpython/v3.8.12/Doc/whatsnew/3.8.rst HTTP/1.1
+REFUSED non-CONNECT: GET http://localhost/ HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1/ HTTP/1.1
+REFUSED non-CONNECT: GET http://vela-proxy/ HTTP/1.1
+REFUSED non-CONNECT: GET http://example.org/ HTTP/1.1
+REFUSED non-CONNECT: GET http://httpbin.org/ HTTP/1.1
+REFUSED non-CONNECT: GET http://pypy.org/ HTTP/1.1
+REFUSED non-CONNECT: GET http://files.pythonhosted.org/ HTTP/1.1
+REFUSED non-CONNECT: GET http://pypi.org/ HTTP/1.1
+REFUSED non-CONNECT: GET http://github.com/ HTTP/1.1
+REFUSED non-CONNECT: GET http://raw.githubusercontent.com/ HTTP/1.1
+REFUSED non-CONNECT: GET http://docs.python.org/ HTTP/1.1
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+REFUSED github.com:80
+REFUSED github.com:443
+REFUSED non-CONNECT: GET http://github.com/python/cpython HTTP/1.1
+REFUSED non-CONNECT: GET http://raw.githubusercontent.com/python/cpython/v3.8.12/Doc/whatsnew/changelog.rst HTTP/1.1
+REFUSED non-CONNECT: GET http://docs.python.org/3/whatsnew/3.8.html HTTP/1.1
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+REFUSED non-CONNECT: GET http://127.0.0.1:45079/get HTTP/1.1
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+REFUSED non-CONNECT: GET http://.example.com/ HTTP/1.1
+REFUSED non-CONNECT: GET http://.example.com/ HTTP/1.1
+ALLOWED opencode.ai:443
+REFUSED www.python.org:443
+REFUSED httpbin.org:443
+REFUSED httpbin.org:443
+REFUSED httpbin.org:443
+REFUSED non-CONNECT: POST http://localhost:60767/ HTTP/1.1
+REFUSED non-CONNECT: GET http://localhost:37899/ HTTP/1.1
+REFUSED non-CONNECT: POST http://localhost:51095/ HTTP/1.1
+REFUSED non-CONNECT: POST http://localhost:56709/ HTTP/1.1
+REFUSED non-CONNECT: GET http://localhost:59991/ HTTP/1.1
+REFUSED non-CONNECT: GET http://localhost:42231/ HTTP/1.1
+REFUSED non-CONNECT: GET http://localhost:57843/ HTTP/1.1
+REFUSED non-CONNECT: GET http://localhost:49829/ HTTP/1.1
+ALLOWED opencode.ai:443
+REFUSED non-CONNECT: GET http://127.0.0.1:40305/get?test=foo&test=baz HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:40305/status/500 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:40305/status/200 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:40305/redirect-to?url=http%3A%2F%2Flocalhost%3A-1 HTTP/1.1
+REFUSED non-CONNECT: GET http://doesnotexist.google.com/ HTTP/1.1
+REFUSED non-CONNECT: GET http://localhost:1/ HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:40309/redirect-to?url=http%3A%2F%2Flocalhost%3A-1 HTTP/1.1
+REFUSED non-CONNECT: GET http://doesnotexist.google.com/ HTTP/1.1
+REFUSED non-CONNECT: GET http://localhost:1/ HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:33737/redirect-to?url=http%3A%2F%2Flocalhost%3A-1 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:33737/get?test=foo&test=baz HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:33737/status/500 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:37681/redirect-to?url=http%3A%2F%2Flocalhost%3A-1 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/redirect/1 HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/redirect-to?url=post&status_code=307 HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/redirect-to?url=post&status_code=307 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/relative-redirect/50 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/relative-redirect/50 HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/status/301 HTTP/1.1
+REFUSED non-CONNECT: HEAD http://127.0.0.1:38375/status/301 HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/status/302 HTTP/1.1
+REFUSED non-CONNECT: HEAD http://127.0.0.1:38375/status/302 HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/status/303 HTTP/1.1
+REFUSED non-CONNECT: HEAD http://127.0.0.1:38375/status/303 HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/post HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/redirect-to?url=get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/user-agent HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get?test=true&q=test HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/cookies/set?foo=bar HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/cookies/set?foo=bar HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/redirect/1 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/cookies/set?foo=bar HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/cookies/set?foo=%22bar:baz%22 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/redirect/1 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/cookies HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/cookies HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/cookies HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/cookies HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/headers HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/redirect/3 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/redirect/1 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/user-agent HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/user-agent HTTP/1.1
+REFUSED non-CONNECT: HEAD http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: PUT http://127.0.0.1:38375/put HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/basic-auth/user/pass HTTP/1.1
+REFUSED non-CONNECT: GET http://doesnotexist.google.com/ HTTP/1.1
+REFUSED non-CONNECT: GET http://localhost:1/ HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/basic-auth/user/pass HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/digest-auth/auth/user/pass/MD5/never HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/digest-auth/auth/user/pass/MD5 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/digest-auth/auth/user/pass/MD5 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/digest-auth/auth/user/pass/MD5 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/digest-auth/auth/user/pass/MD5 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/digest-auth/auth/user/pass/MD5 HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/post HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/post HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/post HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/post HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/post HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/status/404 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/status/404 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/status/500 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/gzip HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get?foo=f%C3%B8%C3%B8 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get?f%C3%B8%C3%B8=f%C3%B8%C3%B8 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get?f%C3%B8%C3%B8=f%C3%B8%C3%B8 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get?foo=foo HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/%C3%B8?foo=foo HTTP/1.1
+REFUSED non-CONNECT: PUT http://127.0.0.1:38375/put HTTP/1.1
+REFUSED 127.0.0.1:42515
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/ HTTP/1.1
+REFUSED 127.0.0.1:42515
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get?test=foo&test=baz HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/post?blah=asdf1234 HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/post HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/post HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/post HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/post HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/post HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/post HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/post HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/ HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/ HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/headers HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/cookies/set?cookie=value HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/post HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/redirect-to?url=HTTP%3A%2F%2F127.0.0.1%3A38375%2Fhtml HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get?foo=bar&FOO=bar HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED 127.0.0.1:42515
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/redirect/1 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/redirect/2 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/redirect/1 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/redirect/5 HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:38375/post HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/stream/4 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/stream/4 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/stream/4 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/stream/4 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/status/204 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/redirect-to?url=http%3A%2F%2F127.0.0.1%3A38375%2Fresponse-headers%3Flocation%3Dhttp%253A%252F%252F127.0.0.1%253A38375%252Fhtml HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/delay/10 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/delay/10 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/delay/10 HTTP/1.1
+REFUSED non-CONNECT: GET http://10.255.255.1/ HTTP/1.1
+REFUSED non-CONNECT: GET http://10.255.255.1/ HTTP/1.1
+REFUSED non-CONNECT: GET http://10.255.255.1/ HTTP/1.1
+REFUSED non-CONNECT: GET http://10.255.255.1/ HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/status/500 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/status/200 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/redirect-to?url=http%3A%2F%2Flocalhost%3A-1 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:38375/bytes/20 HTTP/1.1
+ALLOWED opencode.ai:443
+REFUSED non-CONNECT: GET http://127.0.0.1:34913/redirect-to?url=http%3A%2F%2Flocalhost%3A-1 HTTP/1.1
+REFUSED non-CONNECT: GET http://doesnotexist.google.com/ HTTP/1.1
+REFUSED non-CONNECT: GET http://localhost:1/ HTTP/1.1
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/digest-auth/auth/user/pass HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/digest-auth/auth/user/pass HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/get?test=true&q=test HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/user-agent HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/redirect/1 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/cookies/set?foo=%22bar:baz%22 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/cookies/set?foo=bar HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/cookies/set?foo=bar HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/redirect/1 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/cookies HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/cookies HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/get?foo=bar&FOO=bar HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/cookies HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/cookies HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/cookies/set?foo=bar HTTP/1.1
+REFUSED non-CONNECT: PUT http://127.0.0.1:8080/put HTTP/1.1
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/basic-auth/user/pass HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/digest-auth/auth/user/pass HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/digest-auth/auth/user/pass HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/digest-auth/auth/user/pass HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/digest-auth/auth/user/pass HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/digest-auth/auth/user/pass HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/get?test=true&q=test HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/user-agent HTTP/1.1
+REFUSED non-CONNECT: HEAD http://127.0.0.1:8080/get HTTP/1.1
+REFUSED non-CONNECT: PUT http://127.0.0.1:8080/put HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/redirect/1 HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:8080/post HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:8080/post HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/basic-auth/user/pass HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/redirect/1 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/cookies/set?foo=%22bar:baz%22 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/cookies/set?foo=bar HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/cookies/set?foo=bar HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/redirect/1 HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:8080/post HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/gzip HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:8080/post?blah=asdf1234 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/cookies HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/get?foo=bar&FOO=bar HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/ HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/cookies HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/status/404 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/redirect/3 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/cookies/set?foo=bar HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/status/404 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/status/500 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/get HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/get?foo=f%C3%B8%C3%B8 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/get?f%C3%B8%C3%B8=f%C3%B8%C3%B8 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/get?f%C3%B8%C3%B8=f%C3%B8%C3%B8 HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/get?foo=foo HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/%C3%B8?foo=foo HTTP/1.1
+REFUSED non-CONNECT: PUT http://127.0.0.1:8080/put HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:8080/post HTTP/1.1
+REFUSED non-CONNECT: POST http://127.0.0.1:8080/post HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/redirect-to?url=HTTP%3A%2F%2F127.0.0.1%3A8080%2Fhtml HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/get?test=foo&test=baz HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1:8080/user-agent HTTP/1.1
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443

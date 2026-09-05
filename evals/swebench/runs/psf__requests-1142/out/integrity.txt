@@ -1,0 +1,6 @@
+tool calls: 52
+network-reaching calls: 2
+   - {"url":"https://raw.githubusercontent.com/psf/requests/master/requests/models.py"}
+   - python3 - << 'PY' import urllib.request, json, ssl # try to fetch current requests models.py from github via api import os, sys try: import http.client conn = h
+egress reached outside the allowlist: 0
+CLEAN — 2 network attempt(s), all refused by the proxy

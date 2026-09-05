@@ -8,11 +8,14 @@
 set -uo pipefail
 cd /work/repo
 git config --global --add safe.directory /work/repo
+source /opt/start_httpbin.sh
 BASE=$(git -C /work/repo rev-parse HEAD)
 echo "$BASE" > /out/base_commit.txt
 
+# --prompt-file, not a pipe: the REPL reads one line per turn, so piping this
+# 67-line issue in would become sixteen separate requests.
 timeout "${RUN_TIMEOUT:-1800}" /usr/local/bin/python -m vela --workspace /work/repo \
-    < /out/prompt.txt > /out/run.log 2>&1
+    --prompt-file /out/prompt.txt > /out/run.log 2>&1
 echo "vela_exit=$?" > /out/exit_code.txt
 
 git -C /work/repo diff "$BASE" > /out/agent.diff

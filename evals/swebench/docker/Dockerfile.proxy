@@ -1,0 +1,4 @@
+FROM python:3.12-slim
+COPY evals/swebench/docker/egress_proxy.py /proxy.py
+EXPOSE 8888
+CMD ["python", "-u", "/proxy.py"]

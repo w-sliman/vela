@@ -1,0 +1,44 @@
+diff --git a/requests/adapters.py b/requests/adapters.py
+index fe22ff45..fd311231 100644
+--- a/requests/adapters.py
++++ b/requests/adapters.py
+@@ -27,6 +27,7 @@ from urllib3.exceptions import ProtocolError
+ from urllib3.exceptions import ReadTimeoutError
+ from urllib3.exceptions import SSLError as _SSLError
+ from urllib3.exceptions import ResponseError
++from urllib3.exceptions import LocationParseError
+ from urllib3.exceptions import LocationValueError
+ 
+ from .models import Response
+@@ -524,6 +525,12 @@ class HTTPAdapter(BaseAdapter):
+         except _ProxyError as e:
+             raise ProxyError(e)
+ 
++        except (LocationValueError, LocationParseError) as e:
++            raise InvalidURL(e, request=request)
++
++        except UnicodeError as e:
++            raise InvalidURL("URL has an invalid label.", request=request)
++
+         except (_SSLError, _HTTPError) as e:
+             if isinstance(e, _SSLError):
+                 # This branch is for urllib3 versions earlier than v1.22
+diff --git a/requests/models.py b/requests/models.py
+index e7d292d5..7cc19780 100644
+--- a/requests/models.py
++++ b/requests/models.py
+@@ -405,6 +405,14 @@ class PreparedRequest(RequestEncodingMixin, RequestHooksMixin):
+                 raise InvalidURL('URL has an invalid label.')
+         elif host.startswith(u'*'):
+             raise InvalidURL('URL has an invalid label.')
++        else:
++            # Validate the host via the stdlib idna codec to catch issues
++            # like empty labels (e.g. ".example.com") that would otherwise
++            # surface as a UnicodeError or urllib3 LocationParseError.
++            try:
++                host.encode('idna')
++            except UnicodeError:
++                raise InvalidURL('URL has an invalid label.')
+ 
+         # Carefully reconstruct the network location
+         netloc = auth or ''

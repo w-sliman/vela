@@ -1,0 +1,6 @@
+collected statuses: 205  (excluded 3 env-dependent ids)
+FAIL_TO_PASS  0/2
+   FAILED   tests/test_utils.py::test_prepend_scheme_if_needed[http://user:pass@example.com/path?query-http://user:pass@example.com/path?query]
+   FAILED   tests/test_utils.py::test_prepend_scheme_if_needed[http://user@example.com/path?query-http://user@example.com/path?query]
+PASS_TO_PASS  182/182
+NOT RESOLVED

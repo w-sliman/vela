@@ -1,0 +1,4 @@
+tool calls: 43
+network-reaching calls: 0
+egress reached outside the allowlist: 0
+CLEAN — 0 network attempt(s), all refused by the proxy

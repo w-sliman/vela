@@ -1,0 +1,3 @@
+ requests/adapters.py | 7 +++++++
+ requests/models.py   | 8 ++++++++
+ 2 files changed, 15 insertions(+)

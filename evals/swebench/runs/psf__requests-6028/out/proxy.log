@@ -1,0 +1,66 @@
+egress allowlist: [('opencode.ai', 443)]
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+REFUSED docs.python.org:443
+REFUSED raw.githubusercontent.com:443
+REFUSED non-CONNECT: GET http://docs.python.org/3/whatsnew/3.8.html HTTP/1.1
+REFUSED docs.python.org:443
+REFUSED docs.python.org:443
+REFUSED docs.python.org:443
+REFUSED docs.python.org:443
+REFUSED non-CONNECT: GET http://example.org/ HTTP/1.1
+REFUSED non-CONNECT: GET http://docs.python.org/3/whatsnew/3.8.html HTTP/1.1
+REFUSED non-CONNECT: GET http://httpbin.org/get HTTP/1.1
+REFUSED non-CONNECT: GET http://example.org/ HTTP/1.1
+REFUSED non-CONNECT: GET http://docs.python.org/3/whatsnew/3.8.html HTTP/1.1
+REFUSED docs.python.org:443
+REFUSED non-CONNECT: GET http://raw.githubusercontent.com/ HTTP/1.1
+REFUSED raw.githubusercontent.com:443
+REFUSED non-CONNECT: GET http://github.com/ HTTP/1.1
+REFUSED github.com:443
+REFUSED non-CONNECT: GET http://docs.python.org/ HTTP/1.1
+REFUSED docs.python.org:443
+REFUSED non-CONNECT: GET http://example.org/ HTTP/1.1
+REFUSED example.org:443
+REFUSED non-CONNECT: GET http://httpbin.org/ HTTP/1.1
+REFUSED httpbin.org:443
+REFUSED non-CONNECT: GET http://pypi.org/ HTTP/1.1
+REFUSED pypi.org:443
+REFUSED non-CONNECT: GET http://google.com/ HTTP/1.1
+REFUSED google.com:443
+REFUSED non-CONNECT: GET http://python.org/ HTTP/1.1
+REFUSED python.org:443
+REFUSED non-CONNECT: GET http://example.org/ HTTP/1.1
+REFUSED api.github.com:443
+ALLOWED opencode.ai:443
+REFUSED non-CONNECT: GET http://docs.python.org/3/whatsnew/3.8.html HTTP/1.1
+REFUSED non-CONNECT: GET http://example.org/ HTTP/1.1
+REFUSED non-CONNECT: GET http://example.org/ HTTP/1.1
+REFUSED non-CONNECT: GET http://example.org/ HTTP/1.1
+REFUSED github.com:443
+REFUSED github.com:443
+REFUSED non-CONNECT: GET http://raw.githubusercontent.com/python/cpython/v3.8.12/Doc/whatsnew/3.8.rst HTTP/1.1
+REFUSED non-CONNECT: GET http://localhost/ HTTP/1.1
+REFUSED non-CONNECT: GET http://127.0.0.1/ HTTP/1.1
+REFUSED non-CONNECT: GET http://vela-proxy/ HTTP/1.1
+REFUSED non-CONNECT: GET http://example.org/ HTTP/1.1
+REFUSED non-CONNECT: GET http://httpbin.org/ HTTP/1.1
+REFUSED non-CONNECT: GET http://pypy.org/ HTTP/1.1
+REFUSED non-CONNECT: GET http://files.pythonhosted.org/ HTTP/1.1
+REFUSED non-CONNECT: GET http://pypi.org/ HTTP/1.1
+REFUSED non-CONNECT: GET http://github.com/ HTTP/1.1
+REFUSED non-CONNECT: GET http://raw.githubusercontent.com/ HTTP/1.1
+REFUSED non-CONNECT: GET http://docs.python.org/ HTTP/1.1
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+REFUSED github.com:80
+REFUSED github.com:443
+REFUSED non-CONNECT: GET http://github.com/python/cpython HTTP/1.1
+REFUSED non-CONNECT: GET http://raw.githubusercontent.com/python/cpython/v3.8.12/Doc/whatsnew/changelog.rst HTTP/1.1
+REFUSED non-CONNECT: GET http://docs.python.org/3/whatsnew/3.8.html HTTP/1.1
+ALLOWED opencode.ai:443
+ALLOWED opencode.ai:443
+REFUSED non-CONNECT: GET http://127.0.0.1:45079/get HTTP/1.1
+ALLOWED opencode.ai:443

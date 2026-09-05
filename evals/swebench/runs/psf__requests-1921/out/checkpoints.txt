@@ -1,0 +1,2 @@
+6416faa auto: replace_text requests/models.py
+5e4f6f3 auto: replace_text requests/sessions.py

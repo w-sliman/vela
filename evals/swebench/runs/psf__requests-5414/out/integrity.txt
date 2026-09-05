@@ -1,0 +1,8 @@
+tool calls: 83
+network-reaching calls: 4
+   - python -c "import requests; requests.get('http://.example.com')" 2>&1; echo EXIT:$?
+   - python - << 'PY' import traceback, requests from requests import Request, Session from requests.exceptions import InvalidURL # Test 1: direct try: requests.get(
+   - python - << 'PY' import requests from requests.exceptions import InvalidURL # Test issue reproduction try: requests.get("http://.example.com") print("FAIL: no e
+   - python - << 'PY' import requests from requests.exceptions import InvalidURL, ConnectionError # 1. Original bug try: requests.get("http://.example.com") print("F
+egress reached outside the allowlist: 0
+CLEAN — 4 network attempt(s), all refused by the proxy

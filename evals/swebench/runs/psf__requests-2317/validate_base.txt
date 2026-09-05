@@ -1,0 +1,11 @@
+collected statuses: 143
+FAIL_TO_PASS  6/8
+   FAILED   test_requests.py::RequestsTestCase::test_requests_history_is_saved
+   FAILED   test_requests.py::TestTimeout::test_encoded_methods
+PASS_TO_PASS  127/133
+   FAILED   test_requests.py::RequestsTestCase::test_auth_is_stripped_on_redirect_off_host
+   FAILED   test_requests.py::RequestsTestCase::test_mixed_case_scheme_acceptable
+   FAILED   test_requests.py::RequestsTestCase::test_pyopenssl_redirect
+   FAILED   test_requests.py::TestTimeout::test_stream_timeout
+   FAILED   test_requests.py::TestTimeout::test_connect_timeout
+NOT RESOLVED
