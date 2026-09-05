@@ -88,7 +88,7 @@ class Shell:
     empty; all command output lives in stdout.
     """
     def __init__(self,config): self.config=config
-    def classify(self,command): return classify_command(command)
+    def classify(self,command): return classify_command(command,getattr(self.config,'shell_network',True))
     def run(self,command,approved=False,timeout=None,on_output=None):
         d=self.classify(command)
         if d.action=='deny': raise PermissionError(d.reason)

@@ -60,6 +60,7 @@ set -a; . "$ROOT/.env"; set +a
 log "running agent (egress restricted)"
 docker run --rm --network vela-eval-int --memory=3g --cpus=2 --pids-limit=256 \
   -e HTTPS_PROXY=http://vela-proxy:8888 -e HTTP_PROXY=http://vela-proxy:8888 \
+  -e VELA_SHELL_NETWORK=0 \
   -e OPENAI_API_KEY -e OPENAI_BASE_URL -e OPENAI_MODEL -e OPENAI_API_MODE \
   -e RUN_TIMEOUT="${RUN_TIMEOUT:-1800}" -v "$R/out:/out" "$IMG" > "$R/out/docker.log" 2>&1
 

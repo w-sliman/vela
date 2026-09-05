@@ -9,6 +9,7 @@ from rich.table import Table
 from .config import Config
 from .llm import CodingAgent,PauseInterrupt
 from .session import Session
+from . import shell as shell_module
 from .shell import Shell
 from .workspace import Workspace
 from .tools import ToolContext
@@ -52,6 +53,12 @@ def main():
     if a.prompt and a.prompt_file: p.error('use --prompt or --prompt-file, not both')
     c=Config.from_env(a.workspace);ws=Workspace(c.workspace,c.max_file_chars);shell=Shell(c);session=Session(c.workspace)
     debug_ui.enabled=c.debug
+    if shell_module._BASH is None:
+        console.print('[yellow]No bash found: pipelines report only their last stage, so a failing '
+                      'test piped into another command will look like it passed. '
+                      'Install bash for reliable check results.[/yellow]')
+    if not c.shell_network:
+        console.print('[dim]shell network access denied by policy (VELA_SHELL_NETWORK=0)[/dim]')
     approval=make_approval_callback(c.approval_mode)
     ctx=ToolContext(c,ws,shell,approval,Git(c.workspace),Browser(c.enable_browser,c.allow_private_urls),GitHub(c.enable_github),DockerSandbox(c.workspace,c.enable_sandbox),lambda line: console.print(f'[dim]{line.rstrip()}[/dim]'),Delegator(c, f'Workspace: {c.workspace}', EventBus(debug_ui.event)),EventBus(debug_ui.event),on_tool_result=debug_ui.tool_result);show_banner(c)
     if not c.api_key or not c.model: console.print(Panel('Configure OPENAI_API_KEY and OPENAI_MODEL in .env.',title='LLM configuration required',border_style='red'));raise SystemExit(2)

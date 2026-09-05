@@ -19,7 +19,15 @@ Failures are classified as *harness* (tooling blocked a capable model) or
 
 ## Open — worth fixing
 
-### H1. A blocked network is invisible to the model, and it will not stop trying
+### H4. Two safety properties degrade silently on Windows
+`set -o pipefail` needs bash and `os.killpg` does not exist there, so the
+piped-check fix and the process-group kill both quietly stop working on the
+PowerShell install path the README documents. Vela now warns at startup when
+bash is missing, and the README says so, but the underlying gap is real: on
+Windows without bash, a failing test piped into another command still looks
+like it passed.
+
+### H1. FIXED — a blocked network was invisible to the model
 On the egress-restricted run of `psf__requests-6028` the agent spent **58 of its
 90 shell commands** attempting to reach the network, and made **zero edits** in
 thirty minutes. It tried `browser_fetch` and `github_get` (both disabled, both
@@ -31,25 +39,31 @@ Each attempt failed individually, looking like a transient error worth retrying
 with a different technique. The information exists — `VELA_ENABLE_BROWSER=0` is
 configuration Vela already holds — but it never reaches the model.
 
-Two candidate fixes, not exclusive: state network availability in the system
-prompt when the network tools are disabled, and have the command policy fail
-network-reaching shell commands fast with a message that says the environment
-has no egress rather than surfacing a raw DNS error.
+Fixed with both halves: `VELA_SHELL_NETWORK=0` makes the command policy deny
+network-reaching commands immediately with a reason that says the environment has
+no egress and to work from the repository instead, and the system prompt gains a
+note stating the same thing once, up front. The eval runner sets it. Default
+stays permissive — `pip install` and `git fetch` are ordinary commands and
+denying them by default would protect nothing.
 
-This is the single most expensive harness defect found so far: it consumed an
-entire run's budget.
+This was the single most expensive harness defect found: it consumed an entire
+run's budget.
 
 ### H2. The agent can read its own session trace
 `.vela/` lives inside the workspace, so `list_files`, `search_text` and
 `read_file` all reach it. Recorded in `CLAUDE.md`; the decision is to move agent
 state outside the workspace rather than filter each tool.
 
-### H3. Network policy is enforced only on Vela's own tools
+### H3. PARTLY FIXED — network policy was enforced only on Vela's own tools
 `browser_fetch` and `github_get` respect `VELA_ENABLE_*` and the SSRF guard in
-`net.py`. `run_command` bypasses all of it — the agent disabled TLS verification
-and fetched upstream source directly. Related to the documented fact that the
-shell tool has no path confinement either: the policy layer covers the tools
-that are easy to cover, not the one that matters.
+`net.py`. `run_command` bypassed all of it — the agent disabled TLS verification
+and fetched upstream source directly. The policy can now deny network-reaching
+shell commands (`VELA_SHELL_NETWORK=0`), which closes the case that matters.
+
+Still open: the switch is all-or-nothing, so it cannot express "reach PyPI but
+not GitHub", and the SSRF guard's per-URL reasoning still does not apply to the
+shell. A denylist over command text is also weaker than a network boundary — the
+egress proxy, not this, is what actually holds.
 
 ## Not harness defects (recorded so they are not re-investigated)
 

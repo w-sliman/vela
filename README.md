@@ -42,6 +42,13 @@ cp .env.example .env
 
 ### Windows PowerShell
 
+Two safety properties are POSIX-shaped and degrade on Windows: `set -o pipefail`
+needs bash, so without it a pipeline reports only its last stage and a failing
+test piped into another command looks like it passed; and process-group kill
+falls back to killing only the direct child. Vela warns at startup when bash is
+missing. Running under WSL or Git Bash keeps both.
+
+
 ```powershell
 py -3.11 -m venv .venv
 .venv\Scripts\Activate.ps1
@@ -153,6 +160,22 @@ review this repository for correctness issues; do not modify files
 - Verify gate (on by default, `VELA_VERIFY_GATE=0` disables): if the model tries to finish while todos are open or edits were never followed by a passing check, it gets one corrective nudge first. On the same task with the gate off the model edited a file and declared itself done having run nothing; with it on it ran the tests. It costs at most one extra check per request.
 - **Ctrl+C pauses instead of destroying**: an interrupt mid-run closes any dangling tool-call pair, journals the pause, and returns you to the prompt with full context intact. `/continue` resumes exactly where it stopped.
 - Past sessions can be continued: `/resume` rebuilds task state from any recorded trace as a compact digest (never as raw replay), keeping history/pair integrity intact.
+
+## Evaluation
+
+`evals/swebench/` runs the agent against real SWE-bench Verified instances: a
+container holding the repository at its base commit plus Vela itself, egress
+allowlisted to the model API, every git ref except the base ancestry destroyed,
+and grading against the benchmark's own test lists. Each instance is validated
+both ways before it counts — base must fail, gold must pass — and a run whose
+trace shows it reached the network is reported as contaminated rather than
+scored.
+
+Results, including the instances that could not be validated and the run that
+was disqualified, are in `evals/swebench/results.jsonl`. They are evidence that
+the harness works end to end, not a benchmark score, and
+`evals/swebench/README.md` says why. Nothing here is required to *run* Vela,
+which still needs no Docker.
 
 ## Architecture
 

@@ -44,3 +44,11 @@ GENERAL
 - Use tools for real actions; never fabricate results.
 - If asked for analysis only, do not modify files.
 '''
+
+
+NO_NETWORK_NOTE = (
+    "\n\nENVIRONMENT: this machine has no network access. Fetching anything over "
+    "the network — curl, wget, urllib, requests, pip install, git clone — will "
+    "fail, and trying a different technique will not change that. Work from the "
+    "repository contents and the installed packages."
+)

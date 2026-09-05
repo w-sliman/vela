@@ -2,7 +2,7 @@ from __future__ import annotations
 import json,re
 from dataclasses import dataclass
 from .providers import OpenAICompatibleProvider,backoff_delays,with_retries
-from .prompts import SYSTEM_PROMPT
+from .prompts import NO_NETWORK_NOTE, SYSTEM_PROMPT
 from .budget import ContextBudget,payload_chars
 from .window import REJECTION,WindowStore,looks_like_overflow,parse_limit,resolve as resolve_window
 from .telemetry import Metrics,Timer,extract_usage,USAGE_ADVICE
@@ -169,7 +169,12 @@ class CodingAgent:
         """Swapping the API client rebuilds the transports bound to it, so the
         preferred transport is restored along with the client."""
         self._provider=value
-        self._transports=transports.build(self.config.api_mode,value,self.config.model,SYSTEM_PROMPT,
+        # State the absence of network once, in the system prompt. Discovered
+        # one failed command at a time it looks like a transient error worth
+        # retrying with a different technique, and the model will spend a whole
+        # run doing exactly that.
+        prompt=SYSTEM_PROMPT if getattr(self.config,'shell_network',True) else SYSTEM_PROMPT+NO_NETWORK_NOTE
+        self._transports=transports.build(self.config.api_mode,value,self.config.model,prompt,
                                           stream=getattr(self.config,'stream_chat',True))
         self.transport=self._transports[0]
     @property

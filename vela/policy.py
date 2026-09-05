@@ -19,7 +19,22 @@ HOST_PATH_RE=re.compile(r'(?:^|[\s"\'=(])/(?:home|root|etc|var|usr|opt|proc|sys|
 INLINE_EXEC_RE=re.compile(r'\b(?:python3?|sh|bash|zsh)\s+(?:-\w+\s+)*-c\b')
 FIND_EXEC_RE=re.compile(r'\bfind\s[^\n]*\s(?:-delete|-exec|-execdir|-ok)\b')
 PIP_INSTALL_RE=re.compile(r'\s*pip3?\s+install\b')
-def classify_command(command):
+# A shell command can reach the network no matter what the browser and github
+# tools are configured to do, so an operator who has cut egress needs the policy
+# to say so. Left permissive by default: `pip install` and `git fetch` are
+# ordinary development commands and denying them by default would break more
+# than it protects.
+NETWORK_RE=re.compile(r"""(?xi)
+    \b(curl|wget|nc|ncat|netcat|telnet|ssh|scp|sftp|rsync)\b
+  | \burllib\b | \burlopen\b | \bhttpx\b | \brequests\.(get|post|put|head|request)\b
+  | \bsocket\.create_connection\b
+  | \bgit\s+(clone|fetch|pull|remote\s+update|ls-remote)\b
+  | \b(pip|pip3|uv|npm|yarn|pnpm)\s+(install|add|download|fetch)\b
+  | https?://
+""")
+NO_NETWORK_REASON=('this environment has no network access; the command cannot succeed. '
+                   'Work from the repository contents instead of fetching anything.')
+def classify_command(command, network=True):
     """Classify a shell command as allow / approve / deny.
 
     Purely lexical: containment of *paths* is enforced separately by
@@ -27,6 +42,7 @@ def classify_command(command):
     """
     s=command.strip()
     if not s:return Decision('deny','empty command')
+    if not network and NETWORK_RE.search(s):return Decision('deny',NO_NETWORK_REASON)
     for p,r in RISK_PATTERNS:
         if p.search(s):return Decision('approve',r)
     if COMPOUND_RE.search(s):return Decision('approve','compound/redirecting command requires approval')

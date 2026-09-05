@@ -23,6 +23,7 @@ class Config:
     verify_gate:bool=True
     approval_edits:bool=False
     allow_private_urls:bool=False
+    shell_network:bool=True
     @classmethod
     def from_env(cls, workspace_arg=None):
         load_dotenv()
@@ -48,4 +49,5 @@ class Config:
           int(os.getenv('VELA_RESUME_MAX_CHARS','6000')),
           int(os.getenv('VELA_MEMORY_MAX_RECORDS','200')),int(os.getenv('VELA_MEMORY_TTL_DAYS','0')),
           os.getenv('VELA_TODOS','1')!='0',os.getenv('VELA_VERIFY_GATE','1')!='0',
-          os.getenv('VELA_APPROVAL_EDITS','0')!='0',b('VELA_ALLOW_PRIVATE_URLS'))
+          os.getenv('VELA_APPROVAL_EDITS','0')!='0',b('VELA_ALLOW_PRIVATE_URLS'),
+          os.getenv('VELA_SHELL_NETWORK','1')!='0')
