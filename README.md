@@ -70,6 +70,18 @@ pip install -e .
 vela --workspace ./workspace
 ```
 
+### Non-interactive
+
+The REPL reads one line per turn, so piping a multi-line request into it becomes
+one agent turn per line — the model starts work having seen only the first line.
+For scripts and evaluations, pass the whole request as one message and exit:
+
+```bash
+vela --workspace ./workspace --prompt "fix the failing test in tests/test_parser.py"
+vela --workspace ./workspace --prompt-file task.md
+vela --workspace ./workspace --prompt-file -   # all of stdin as one request
+```
+
 ## First tasks to try
 
 ```text

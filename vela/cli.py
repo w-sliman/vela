@@ -1,5 +1,6 @@
 from __future__ import annotations
-import argparse
+import argparse, sys
+from pathlib import Path
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -39,7 +40,16 @@ def show_banner(c):
     if getattr(c, 'approval_edits', False):
         console.print('[yellow]Edit approval ON — every file change asks first[/yellow]')
 def main():
-    p=argparse.ArgumentParser(description='Interactive venv-native coding agent');p.add_argument('--workspace');p.add_argument('--plan',action='store_true');a=p.parse_args()
+    p=argparse.ArgumentParser(description='Interactive venv-native coding agent')
+    p.add_argument('--workspace');p.add_argument('--plan',action='store_true')
+    # The REPL reads one line per turn, so piping a multi-paragraph request into
+    # stdin silently becomes one agent turn per line -- the model starts work on
+    # the first line having never seen the rest. These take the whole text as a
+    # single request and exit, which is what scripts and evaluations need.
+    p.add_argument('--prompt',metavar='TEXT',help='run one request non-interactively and exit')
+    p.add_argument('--prompt-file',metavar='PATH',help="read one request from a file ('-' for all of stdin) and exit")
+    a=p.parse_args()
+    if a.prompt and a.prompt_file: p.error('use --prompt or --prompt-file, not both')
     c=Config.from_env(a.workspace);ws=Workspace(c.workspace,c.max_file_chars);shell=Shell(c);session=Session(c.workspace)
     debug_ui.enabled=c.debug
     approval=make_approval_callback(c.approval_mode)
@@ -49,6 +59,13 @@ def main():
     if agent.window_source!='configured':
         console.print(f'[dim]context window: {agent.budget.window:,} tokens ({agent.window_source})[/dim]')
     if a.plan: console.print(Markdown(agent.run('Create an implementation plan for this repository. Do not edit files.').text));return
+    request=a.prompt
+    if a.prompt_file is not None:
+        request=sys.stdin.read() if a.prompt_file=='-' else Path(a.prompt_file).read_text()
+    if request is not None:
+        request=request.strip()
+        if not request: console.print('[red]empty prompt[/red]');raise SystemExit(2)
+        console.print(Markdown(agent.run(request).text));return
     while True:
         try:text=Prompt.ask('[bold green]you[/bold green]').strip()
         except (EOFError,KeyboardInterrupt):console.print();break
