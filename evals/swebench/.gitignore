@@ -1,0 +1,4 @@
+# Instance checkouts and virtualenvs are rebuilt from instance.json; only the
+# evidence of a run belongs in git.
+runs/*/repo/
+runs/*/env/

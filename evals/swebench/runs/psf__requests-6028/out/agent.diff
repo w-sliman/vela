@@ -1,0 +1,66 @@
+diff --git a/requests/sessions.py b/requests/sessions.py
+index 3f59cab9..de945dc4 100644
+--- a/requests/sessions.py
++++ b/requests/sessions.py
+@@ -29,7 +29,7 @@ from .adapters import HTTPAdapter
+ 
+ from .utils import (
+     requote_uri, get_environ_proxies, get_netrc_auth, should_bypass_proxies,
+-    get_auth_from_url, rewind_body, resolve_proxies
++    get_auth_from_url, rewind_body, resolve_proxies, select_proxy
+ )
+ 
+ from .status_codes import codes
+@@ -282,19 +282,17 @@ class SessionRedirectMixin(object):
+         :rtype: dict
+         """
+         headers = prepared_request.headers
+-        scheme = urlparse(prepared_request.url).scheme
+         new_proxies = resolve_proxies(prepared_request, proxies, self.trust_env)
+ 
+-        if 'Proxy-Authorization' in headers:
+-            del headers['Proxy-Authorization']
++        proxy = select_proxy(prepared_request.url, new_proxies)
+ 
+-        try:
+-            username, password = get_auth_from_url(new_proxies[scheme])
+-        except KeyError:
+-            username, password = None, None
+-
+-        if username and password:
+-            headers['Proxy-Authorization'] = _basic_auth_str(username, password)
++        if proxy:
++            username, password = get_auth_from_url(proxy)
++            if username:
++                headers['Proxy-Authorization'] = _basic_auth_str(username, password)
++        else:
++            if 'Proxy-Authorization' in headers:
++                del headers['Proxy-Authorization']
+ 
+         return new_proxies
+ 
+diff --git a/requests/utils.py b/requests/utils.py
+index 1c2ae4e0..8e0a5eb1 100644
+--- a/requests/utils.py
++++ b/requests/utils.py
+@@ -974,6 +974,10 @@ def prepend_scheme_if_needed(url, new_scheme):
+     if not netloc:
+         netloc, path = path, netloc
+ 
++    if auth:
++        # parse_url doesn't provide the netloc with auth
++        # so we'll add it ourselves.
++        netloc = '@'.join([auth, netloc])
+     if scheme is None:
+         scheme = new_scheme
+     if path is None:
+@@ -991,7 +995,8 @@ def get_auth_from_url(url):
+     parsed = urlparse(url)
+ 
+     try:
+-        auth = (unquote(parsed.username), unquote(parsed.password))
++        auth = (unquote(parsed.username) if parsed.username else '',
++                unquote(parsed.password) if parsed.password else '')
+     except (AttributeError, TypeError):
+         auth = ('', '')
+ 
