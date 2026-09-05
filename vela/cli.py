@@ -8,6 +8,7 @@ from rich.prompt import Confirm,Prompt
 from rich.table import Table
 from .config import Config
 from .llm import CodingAgent,PauseInterrupt
+from .redact import redact
 from .session import Session
 from . import shell as shell_module
 from .shell import Shell
@@ -60,7 +61,7 @@ def main():
     if not c.shell_network:
         console.print('[dim]shell network access denied by policy (VELA_SHELL_NETWORK=0)[/dim]')
     approval=make_approval_callback(c.approval_mode)
-    ctx=ToolContext(c,ws,shell,approval,Git(c.workspace),Browser(c.enable_browser,c.allow_private_urls),GitHub(c.enable_github),DockerSandbox(c.workspace,c.enable_sandbox),lambda line: console.print(f'[dim]{line.rstrip()}[/dim]'),Delegator(c, f'Workspace: {c.workspace}', EventBus(debug_ui.event)),EventBus(debug_ui.event),on_tool_result=debug_ui.tool_result);show_banner(c)
+    ctx=ToolContext(c,ws,shell,approval,Git(c.workspace),Browser(c.enable_browser,c.allow_private_urls),GitHub(c.enable_github),DockerSandbox(c.workspace,c.enable_sandbox),lambda line: console.print(f'[dim]{redact(line.rstrip())}[/dim]'),Delegator(c, f'Workspace: {c.workspace}', EventBus(debug_ui.event)),EventBus(debug_ui.event),on_tool_result=debug_ui.tool_result);show_banner(c)
     if not c.api_key or not c.model: console.print(Panel('Configure OPENAI_API_KEY and OPENAI_MODEL in .env.',title='LLM configuration required',border_style='red'));raise SystemExit(2)
     agent=CodingAgent(c,ctx,session,EventBus(debug_ui.event))
     if agent.window_source!='configured':
